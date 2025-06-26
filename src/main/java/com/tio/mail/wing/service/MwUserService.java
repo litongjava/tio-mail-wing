@@ -2,6 +2,8 @@ package com.tio.mail.wing.service;
 
 import com.litongjava.annotation.AService;
 import com.litongjava.db.activerecord.Db;
+import com.litongjava.db.activerecord.Row;
+import com.litongjava.template.SqlTemplates;
 import com.litongjava.tio.utils.digest.Sha256Utils;
 
 @AService
@@ -25,5 +27,9 @@ public class MwUserService {
   public boolean userExists(String username) {
     String sql = "select count(1) from mw_user where username=? and deleted=0";
     return Db.existsBySql(sql, username);
+  }
+  
+  public Row getUserByUsername(String username) {
+    return Db.findFirst(SqlTemplates.get("mailbox.user.findByUsername"), username);
   }
 }

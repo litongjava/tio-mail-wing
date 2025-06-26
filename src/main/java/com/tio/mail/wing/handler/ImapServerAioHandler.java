@@ -279,8 +279,8 @@ public class ImapServerAioHandler implements ServerAioHandler {
   // 关键改动 6: 全面改造 SELECT 响应，使其符合 Dovecot 标准
   // =================================================================
   private void handleSelect(ChannelContext ctx, ImapSessionContext session, String tag, String args) {
-    String mailboxName  = unquote(args);
-    if (!"INBOX".equalsIgnoreCase(mailboxName )) {
+    String mailboxName = unquote(args);
+    if (!"INBOX".equalsIgnoreCase(mailboxName)) {
       ImapSessionContext.sendTaggedNo(ctx, tag, "SELECT", "mailbox not found: " + mailboxName);
       return;
     }
@@ -290,25 +290,23 @@ public class ImapServerAioHandler implements ServerAioHandler {
     // 使用新的 Service 方法
     Map<String, Object> mailboxMeta = mailboxService.getMailboxMetadata(session.getUsername(), mailboxName);
     if (mailboxMeta == null) {
-        ImapSessionContext.sendTaggedNo(ctx, tag, "SELECT", "mailbox not found: " + mailboxName);
-        return;
+      ImapSessionContext.sendTaggedNo(ctx, tag, "SELECT", "mailbox not found: " + mailboxName);
+      return;
     }
 
     List<Email> allEmails = mailboxService.getActiveMessages(session.getUsername(), mailboxName);
     long existsCount = allEmails.size();
     long recentCount = allEmails.stream().filter(e -> e.getFlags().contains("\\Recent")).count();
-    
+
     long uidValidity = (long) mailboxMeta.get("uidValidity");
     AtomicLong uidNextCounter = (AtomicLong) mailboxMeta.get("uidNext");
     long uidNext = uidNextCounter.get();
-    
 
     // 按照 Dovecot 的顺序和格式发送响应
     ImapSessionContext.sendUntagged(ctx, "FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)");
     ImapSessionContext.sendUntagged(ctx, "OK [PERMANENTFLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft \\*)] Flags permitted.");
     ImapSessionContext.sendUntagged(ctx, existsCount + " EXISTS");
     ImapSessionContext.sendUntagged(ctx, recentCount + " RECENT");
-
 
     ImapSessionContext.sendUntagged(ctx, "OK [UIDVALIDITY " + uidValidity + "] UIDs valid.");
     ImapSessionContext.sendUntagged(ctx, "OK [UIDNEXT " + uidNext + "] Predicted next UID.");
@@ -331,17 +329,20 @@ public class ImapServerAioHandler implements ServerAioHandler {
       return;
     }
 
+    String username = session.getUsername();
+    String selectedMailbox = session.getSelectedMailbox();
+        
     String messageSet = matcher.group(1);
     String fetchItemsStr = matcher.group(2).toUpperCase();
 
-    String selectedMailbox = session.getSelectedMailbox();
-    List<Email> allEmails = mailboxService.getActiveMessages(session.getUsername(),selectedMailbox);
+    
+    
     List<Email> emailsToFetch;
 
     if (isUidCommand) {
-      emailsToFetch = mailboxService.findEmailsByUidSet(messageSet, allEmails);
+      emailsToFetch = mailboxService.findEmailsByUidSet(username,selectedMailbox,messageSet);
     } else {
-      emailsToFetch = mailboxService.findEmailsBySeqSet(messageSet, allEmails);
+      emailsToFetch = mailboxService.findEmailsBySeqSet(messageSet, selectedMailbox,messageSet);
     }
 
     if (emailsToFetch.isEmpty()) {
@@ -410,7 +411,7 @@ public class ImapServerAioHandler implements ServerAioHandler {
     Set<String> flags = new HashSet<>(Arrays.asList(flagsStr.split("\\s+")));
     boolean add = operation.startsWith("+");
     String selectedMailbox = session.getSelectedMailbox();
-    List<Email> allEmails = mailboxService.getActiveMessages(session.getUsername(),selectedMailbox);
+    List<Email> allEmails = mailboxService.getActiveMessages(session.getUsername(), selectedMailbox);
     List<Email> emailsToUpdate;
     if (isUidCommand) {
       emailsToUpdate = mailboxService.findEmailsByUidSet(messageSet, allEmails);

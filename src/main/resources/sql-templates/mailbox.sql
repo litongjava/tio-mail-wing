@@ -14,25 +14,6 @@ SELECT id FROM mw_mail_message WHERE content_hash = ?;
 -- 原子性地将uid_next加1，并返回更新前的uid_next值作为新邮件的UID
 UPDATE mw_mailbox SET uid_next = uid_next + 1 WHERE id = ? RETURNING uid_next - 1 AS next_uid;
 
---# mailbox.getActiveMessages
--- [核心查询] 获取邮箱中所有未删除邮件的完整信息（包括聚合后的标志）
--- 使用 LEFT JOIN 和 ARRAY_AGG 将所有信息一次性查出
-SELECT
-  m.id, m.uid, m.internal_date,
-  msg.raw_content, msg.size_in_bytes,
-  -- 聚合所有标志到一个数组, FILTER子句可以避免在没有标志时产生一个含NULL的数组
-  ARRAY_AGG(mf.flag) FILTER (WHERE mf.flag IS NOT NULL) as flags
-FROM mw_mail m
-JOIN mw_mail_message msg ON m.message_id = msg.id
-LEFT JOIN mw_mail_flag mf ON m.id = mf.mail_id
-WHERE m.mailbox_id = ?
-  -- 使用 NOT EXISTS 检查 \Deleted 标志，通常比 LEFT JOIN + WHERE IS NULL 更高效
-  AND NOT EXISTS (
-    SELECT 1 FROM mw_mail_flag del_mf WHERE del_mf.mail_id = m.id AND del_mf.flag = '\Deleted'
-  )
-GROUP BY m.id, msg.id -- 按邮件实例和消息分组
-ORDER BY m.uid ASC;
-
 --# mailbox.getMessageByUid
 -- [核心查询] 根据UID获取单封邮件的完整信息
 SELECT
@@ -117,3 +98,39 @@ WHERE m.mailbox_id = ?
   AND NOT EXISTS (
     SELECT 1 FROM mw_mail_flag del_mf WHERE del_mf.mail_id = m.id AND del_mf.flag = '\Deleted'
   );
+  
+--# mailbox.baseRankedEmailsCTE
+-- 这个SQL块现在既可以被独立获取，也可以被其他块包含
+-- 它定义了一个公共表表达式（CTE）
+WITH ranked_emails AS (
+  SELECT
+    m.id, m.uid, m.internal_date, m.message_id,
+    ROW_NUMBER() OVER (ORDER BY m.uid ASC) as seq_num
+  FROM mw_mail m
+  WHERE m.mailbox_id = ?
+    AND NOT EXISTS (
+      SELECT 1 FROM mw_mail_flag del_mf WHERE del_mf.mail_id = m.id AND del_mf.flag = '\Deleted'
+    )
+)
+
+--# mailbox.getActiveMessages
+-- 使用 --include 来包含上面定义的CTE
+--#include(mailbox.baseRankedEmailsCTE)
+SELECT
+  r.id, r.uid, r.internal_date, r.seq_num,
+  msg.raw_content, msg.size_in_bytes,
+  ARRAY_AGG(mf.flag) FILTER (WHERE mf.flag IS NOT NULL) as flags
+FROM ranked_emails r
+JOIN mw_mail_message msg ON r.message_id = msg.id
+LEFT JOIN mw_mail_flag mf ON r.id = mf.mail_id
+GROUP BY r.id, r.uid, r.internal_date, r.seq_num, msg.id
+ORDER BY r.uid ASC;
+
+--# mailbox.findEmails.byUidSet
+-- 同样可以包含
+--#include(mailbox.baseRankedEmailsCTE)
+SELECT
+  r.id, r.uid, r.internal_date, r.seq_num,
+  msg.raw_content, msg.size_in_bytes,
+  ARRAY_AGG(mf.flag) FILTER (WHERE mf.flag IS NOT NULL) as flags
+FROM ranked_emails r

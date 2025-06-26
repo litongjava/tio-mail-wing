@@ -78,6 +78,12 @@ public class Email {
    * transient 表示这个字段不会被JPA/MyBatis等ORM框架持久化。
    */
   private transient Map<String, String> headers;
+  
+  /**
+   * The sequence number of this email within its mailbox.
+   * This is a transient field, calculated at query time, not stored in the database.
+   */
+  private int sequenceNumber; 
 
   /**
    * 构造函数，用于从原始MIME内容创建邮件对象。
