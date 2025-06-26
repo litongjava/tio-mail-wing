@@ -20,6 +20,7 @@ import com.litongjava.db.activerecord.Db;
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.template.SqlTemplates;
+import com.litongjava.tio.utils.snowflake.SnowflakeIdUtils;
 import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.model.Email;
 
@@ -29,7 +30,7 @@ import lombok.extern.slf4j.Slf4j;
 public class MailboxService {
 
   private MwUserService mwUserService = Aop.get(MwUserService.class);
-  
+
   /**
    * [兼容SMTP] 将接收到的邮件保存到指定用户的收件箱(INBOX)中。
    */
@@ -50,12 +51,12 @@ public class MailboxService {
    * 优化：直接在数据库中计算，避免加载所有邮件到内存。
    */
   public int[] getStat(String username) {
-    
+
     Row user = mwUserService.getUserByUsername(username);
     if (user == null) {
       return new int[] { 0, 0 };
     }
-      
+
     Row mailbox = getMailboxByName(user.getLong("id"), MailBoxName.INBOX);
     if (mailbox == null)
       return new int[] { 0, 0 };
@@ -127,9 +128,12 @@ public class MailboxService {
 
         Row message = Db.findFirst(SqlTemplates.get("mailbox.message.findByHash"), contentHash);
         long messageId;
+        long id = SnowflakeIdUtils.id();
         if (message == null) {
           Map<String, String> headers = parseHeaders(rawContent);
-          Row newMessage = new Row().set("content_hash", contentHash).set("message_id_header", headers.get("Message-ID"))
+          Row newMessage = Row.by("id", id).set("content_hash", contentHash)
+              //
+              .set("message_id_header", headers.get("Message-ID"))
               //
               .set("subject", headers.get("Subject"))
               //
@@ -151,15 +155,14 @@ public class MailboxService {
         long nextUid = result.getLong("next_uid");
 
         // 4. 创建邮件实例 (mw_mail)
-        Row mailInstance = new Row().set("user_id", userId).set("mailbox_id", mailboxId).set("message_id", messageId).set("uid", nextUid).set("internal_date", new Date());
+        Row mailInstance = Row.by("id", id).set("user_id", userId).set("mailbox_id", mailboxId).set("message_id", messageId).set("uid", nextUid).set("internal_date", new Date());
         Db.save("mw_mail", "id", mailInstance);
-        long mailInstanceId = mailInstance.getLong("id");
 
         // 5. 为新邮件设置 \Recent 标志 (mw_mail_flag)
-        Row recentFlag = new Row().set("mail_id", mailInstanceId).set("flag", "\\Recent");
+        Row recentFlag =  Row.create().set("mail_id", id).set("flag", "\\Recent");
         Db.save("mw_mail_flag", recentFlag);
 
-        log.info("Saved new email for {} in mailbox {} with UID {}. Mail instance ID: {}", username, mailboxName, nextUid, mailInstanceId);
+        log.info("Saved new email for {} in mailbox {} with UID {}. Mail instance ID: {}", username, mailboxName, nextUid, id);
         return true;
       });
     } catch (Exception e) {
@@ -345,7 +348,6 @@ public class MailboxService {
   // =================================================================
   // == 私有辅助方法
   // =================================================================
-
 
   private Row getMailboxByName(long userId, String mailboxName) {
     return Db.findFirst(SqlTemplates.get("mailbox.getByName"), userId, mailboxName);

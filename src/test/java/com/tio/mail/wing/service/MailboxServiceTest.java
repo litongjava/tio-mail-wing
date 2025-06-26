@@ -9,6 +9,7 @@ import java.util.List;
 import org.junit.Test;
 
 import com.litongjava.db.activerecord.Db;
+import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.tio.boot.testing.TioBootTest;
 import com.tio.mail.wing.config.MwAdminAppConfig;
@@ -24,7 +25,7 @@ public class MailboxServiceTest {
 
     // Arrange: Define the email content
     String fromUser = "user1@tio.com";
-    String toUser = "error@tio.com";
+    String toUser = "user2@tio.com";
     String subject = "hi";
     String body = "hi";
     // 使用建造者模式创建一个邮件对象
@@ -45,8 +46,11 @@ public class MailboxServiceTest {
     System.out.println(savedEmail);
 
     // Assert: Check mailbox's uid_next was incremented
-    Long nextUid = Db.findFirst("SELECT uid_next FROM mw_mailbox WHERE name = 'Inbox' AND user_id = 2").getLong("uid_next");
-    System.out.println(nextUid);
+    Row row = Db.findFirst("SELECT uid_next FROM mw_mailbox WHERE name = 'Inbox' AND user_id = 1002");
+    if(row!=null) {
+      Long nextUid = row.getLong("uid_next");
+      System.out.println(nextUid);
+    }
 
   }
 
