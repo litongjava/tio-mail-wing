@@ -103,7 +103,7 @@ public class SmtpServerAioHandler implements ServerAioHandler {
       if (session.getState() == SmtpSessionContext.State.AUTH_WAIT_USERNAME || session.getState() == SmtpSessionContext.State.AUTH_WAIT_PASSWORD) {
         reply = smtpService.handleAuthData(line, session);
       } else {
-        reply = 500 + " " + "Command not recognized\r\n";
+        reply = 500 + " Command not recognized\r\n";
       }
     }
 

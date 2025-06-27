@@ -3,8 +3,10 @@ package com.tio.mail.wing.listener;
 
 import com.litongjava.aio.Packet;
 import com.litongjava.tio.core.ChannelContext;
+import com.litongjava.tio.core.Tio;
 import com.litongjava.tio.server.intf.ServerAioListener;
 import com.tio.mail.wing.handler.Pop3SessionContext;
+import com.tio.mail.wing.packet.Pop3Packet;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -20,7 +22,8 @@ public class Pop3ServerAioListener implements ServerAioListener {
       channelContext.set("sessionContext", sessionContext);
 
       // 2. 立即发送欢迎消息
-      Pop3SessionContext.sendOk(channelContext, "tio-mail-wing POP3 server ready.");
+      String response = "+OK tio-mail-wing POP3 server ready.\r\n";
+      Tio.send(channelContext, new Pop3Packet(response));
       log.info("POP3 >>> +OK welcome message sent to {}", channelContext.getClientNode());
     }
   }
