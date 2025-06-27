@@ -174,3 +174,29 @@ SELECT
   msg.raw_content, msg.size_in_bytes,
   ARRAY_AGG(mf.flag) FILTER (WHERE mf.flag IS NOT NULL) as flags
 FROM ranked_emails r
+
+--# mailbox.findEmails.BySeqSet
+SELECT *
+FROM (
+    SELECT
+        m.id,
+        m.uid,
+        m.internal_date,
+        msg.raw_content,
+        msg.size_in_bytes,
+        ROW_NUMBER() OVER (ORDER BY m.uid ASC) AS seq_num,
+        COALESCE(
+            (
+                SELECT ARRAY_AGG(f.flag)
+                FROM mw_mail_flag AS f
+                WHERE f.mail_id = m.id
+            ),
+            '{}'
+        ) AS flags
+    FROM mw_mail AS m
+    JOIN mw_mail_message AS msg
+        ON m.message_id = msg.id
+    WHERE m.mailbox_id = ?
+      AND m.deleted = 0
+) AS subquery
+WHERE %s;

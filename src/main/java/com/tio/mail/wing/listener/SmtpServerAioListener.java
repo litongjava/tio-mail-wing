@@ -1,10 +1,12 @@
-// src/main/java/com/tio/mail/wing/listener/SmtpServerAioListener.java
 package com.tio.mail.wing.listener;
 
 import com.litongjava.aio.Packet;
 import com.litongjava.tio.core.ChannelContext;
+import com.litongjava.tio.core.Tio;
 import com.litongjava.tio.server.intf.ServerAioListener;
 import com.tio.mail.wing.handler.SmtpSessionContext;
+import com.tio.mail.wing.packet.SmtpPacket;
+
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -19,7 +21,8 @@ public class SmtpServerAioListener implements ServerAioListener {
       channelContext.set("sessionContext", sessionContext);
 
       // 2. 发送欢迎消息 (220)
-      SmtpSessionContext.sendResponse(channelContext, 220, "tio-mail-wing ESMTP Service ready");
+      String reply = 220 + " " + "tio-mail-wing ESMTP Service ready\r\n";
+      Tio.send(channelContext, new SmtpPacket(reply));
       log.info("SMTP >>> 220 Welcome message sent to {}", channelContext.getClientNode());
     }
   }

@@ -4,10 +4,6 @@ package com.tio.mail.wing.handler;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.litongjava.tio.core.ChannelContext;
-import com.litongjava.tio.core.Tio;
-import com.tio.mail.wing.packet.SmtpPacket;
-
 import lombok.Getter;
 import lombok.Setter;
 
@@ -53,16 +49,5 @@ public class SmtpSessionContext {
     this.mailContent.setLength(0);
     // 认证状态保留，但事务状态回到 GREETED
     this.state = State.GREETED;
-  }
-
-  /**
-   * 发送响应
-   * @param context ChannelContext
-   * @param code 响应码 (e.g., 220, 250, 334)
-   * @param message 消息
-   */
-  public static void sendResponse(ChannelContext context, int code, String message) {
-    String response = code + " " + message + "\r\n";
-    Tio.send(context, new SmtpPacket(response));
   }
 }

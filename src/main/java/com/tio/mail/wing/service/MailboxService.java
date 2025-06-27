@@ -20,6 +20,7 @@ import com.litongjava.db.activerecord.Db;
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.template.SqlTemplates;
+import com.litongjava.tio.utils.digest.Sha256Utils;
 import com.litongjava.tio.utils.snowflake.SnowflakeIdUtils;
 import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.model.Email;
@@ -30,6 +31,32 @@ import lombok.extern.slf4j.Slf4j;
 public class MailboxService {
 
   private MwUserService mwUserService = Aop.get(MwUserService.class);
+
+  private WhereClauseResult buildSeqWhereClause(String messageSet, long mailboxId) {
+    StringBuilder clause = new StringBuilder();
+    List<Object> params = new ArrayList<>();
+
+    String[] parts = messageSet.split(",");
+    for (String part : parts) {
+      part = part.trim();
+      if (clause.length() > 0)
+        clause.append(" OR ");
+
+      if (part.contains(":")) {
+        String[] range = part.split(":", 2);
+        // Assuming '*' is replaced with max sequence number before calling this method
+        int start = Integer.parseInt(range[0]);
+        int end = Integer.parseInt(range[1]);
+        clause.append("seq_num BETWEEN ? AND ?");
+        params.add(Math.min(start, end));
+        params.add(Math.max(start, end));
+      } else {
+        clause.append("seq_num = ?");
+        params.add(Integer.parseInt(part));
+      }
+    }
+    return new WhereClauseResult(clause.toString(), params);
+  }
 
   /**
    * [兼容SMTP] 将接收到的邮件保存到指定用户的收件箱(INBOX)中。
@@ -96,10 +123,6 @@ public class MailboxService {
     return getActiveMessages(username, MailBoxName.INBOX).stream().map(Email::getUid).collect(Collectors.toList());
   }
 
-  // =================================================================
-  // == IMAP 专用或内部核心方法
-  // =================================================================
-
   /**
    * 内部核心的邮件保存方法。
    * 优化：使用事务和原子性UID更新。
@@ -123,7 +146,7 @@ public class MailboxService {
         long mailboxId = mailbox.getLong("id");
 
         // 2. 处理邮件内容，实现去重 (mw_mail_message)
-        String contentHash = calculateSha256(rawContent);
+        String contentHash = Sha256Utils.digestToHex(rawContent);
         int sizeInBytes = rawContent.getBytes(StandardCharsets.UTF_8).length;
 
         Row message = Db.findFirst(SqlTemplates.get("mailbox.message.findByHash"), contentHash);
@@ -317,61 +340,45 @@ public class MailboxService {
     return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
 
-//com/tio/mail/wing/service/MailboxService.java
-
- /**
+  /**
   * [IMAP核心] 根据序号集合获取邮件列表。
   * 优化：使用窗口函数在数据库中过滤，避免内存操作。
   */
- public List<Email> findEmailsBySeqSet(String username, String mailboxName, String messageSet) {
-   Row user = mwUserService.getUserByUsername(username);
-   if (user == null)
-     return Collections.emptyList();
-   Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
-   if (mailbox == null)
-     return Collections.emptyList();
-   long mailboxId = mailbox.getLong("id");
+  public List<Email> findEmailsBySeqSet(String username, String mailboxName, String messageSet) {
+    Row user = mwUserService.getUserByUsername(username);
+    if (user == null) {
+      return Collections.emptyList();
+    }
 
-   // 解析 messageSet 并构建 SQL 条件
-   // 注意：这里的 helper 方法需要返回针对 sequence_number 的条件
-   WhereClauseResult whereClause = buildSeqWhereClause(messageSet, mailboxId);
-   if (whereClause.getClause().isEmpty()) {
-     return Collections.emptyList();
-   }
+    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
+    if (mailbox == null) {
+      return Collections.emptyList();
+    }
 
-   // 我们需要一个能够按序号过滤的子查询
-   String baseQueryWithSubquery = 
-       "SELECT * FROM (" +
-       "  SELECT" +
-       "    --#include(mail.baseColumns)," +
-       "    ROW_NUMBER() OVER (ORDER BY m.uid ASC) as sequence_number," +
-       "    COALESCE((SELECT ARRAY_AGG(f.flag) FROM mw_mail_flag f WHERE f.mail_id = m.id), '{}') as flags " +
-       "  FROM mw_mail m JOIN mw_mail_message msg ON m.message_id = msg.id " +
-       "  WHERE m.mailbox_id = ? AND m.deleted = 0" +
-       ") AS subquery " +
-       "WHERE %s"; // 动态条件作用于子查询的结果
+    long mailboxId = mailbox.getLong("id");
 
-   // 使用 SqlTemplates 动态解析 #include
-   String resolvedBaseQuery = SqlTemplates.get(baseQueryWithSubquery);
-   String finalSql = String.format(resolvedBaseQuery, whereClause.getClause());
+    // 解析 messageSet 并构建 SQL 条件
+    // 注意：这里的 helper 方法需要返回针对 sequence_number 的条件
+    WhereClauseResult whereClause = buildSeqWhereClause(messageSet, mailboxId);
+    if (whereClause.getClause().isEmpty()) {
+      return Collections.emptyList();
+    }
 
-   List<Object> params = new ArrayList<>();
-   params.add(mailboxId); // 这是子查询中的 '?'
-   params.addAll(whereClause.getParams()); // 这是外部WHERE条件的参数
+    // 使用 SqlTemplates 动态解析 #include
+    String resolvedBaseQuery = SqlTemplates.get("mailbox.findEmails.BySeqSet");
+    String finalSql = String.format(resolvedBaseQuery, whereClause.getClause());
 
-   List<Row> mailRows = Db.find(finalSql, params.toArray());
-   return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
- }
+    List<Object> params = new ArrayList<>();
+    params.add(mailboxId); // 这是子查询中的 '?'
+    params.addAll(whereClause.getParams()); // 这是外部WHERE条件的参数
 
-  // =================================================================
-  // == 私有辅助方法
-  // =================================================================
+    List<Row> mailRows = Db.find(finalSql, params.toArray());
+    return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
+  }
 
   private Row getMailboxByName(long userId, String mailboxName) {
     return Db.findFirst(SqlTemplates.get("mailbox.getByName"), userId, mailboxName);
   }
-
-  //com/tio/mail/wing/service/MailboxService.java
 
   /**
   * 将数据库行（包含聚合后的标志数组）转换为 Email DTO 对象。
@@ -460,55 +467,9 @@ public class MailboxService {
     return new WhereClauseResult(clause.toString(), params);
   }
 
-  private WhereClauseResult buildSeqWhereClause(String messageSet, long mailboxId) {
-    // Seq set parsing is complex due to '*' which depends on total count.
-    // For simplicity, we assume '*' is handled by the caller or pre-calculated.
-    // A full implementation would need to get the total count first.
-    StringBuilder clause = new StringBuilder();
-    List<Object> params = new ArrayList<>();
-
-    String[] parts = messageSet.split(",");
-    for (String part : parts) {
-      part = part.trim();
-      if (clause.length() > 0)
-        clause.append(" OR ");
-
-      if (part.contains(":")) {
-        String[] range = part.split(":", 2);
-        // Assuming '*' is replaced with max sequence number before calling this method
-        int start = Integer.parseInt(range[0]);
-        int end = Integer.parseInt(range[1]);
-        clause.append("seq_num BETWEEN ? AND ?");
-        params.add(Math.min(start, end));
-        params.add(Math.max(start, end));
-      } else {
-        clause.append("seq_num = ?");
-        params.add(Integer.parseInt(part));
-      }
-    }
-    return new WhereClauseResult(clause.toString(), params);
-  }
-
   private Long getMaxUid(long mailboxId) {
     Row row = Db.findFirst(SqlTemplates.get("mailbox.getMaxUid"), mailboxId);
     return (row != null && row.getLong("max") != null) ? row.getLong("max") : 0L;
-  }
-
-  private String calculateSha256(String text) {
-    try {
-      MessageDigest digest = MessageDigest.getInstance("SHA-256");
-      byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
-      StringBuilder hexString = new StringBuilder();
-      for (byte b : hash) {
-        String hex = Integer.toHexString(0xff & b);
-        if (hex.length() == 1)
-          hexString.append('0');
-        hexString.append(hex);
-      }
-      return hexString.toString();
-    } catch (NoSuchAlgorithmException e) {
-      throw new RuntimeException("SHA-256 algorithm not found", e);
-    }
   }
 
   private Map<String, String> parseHeaders(String rawContent) {

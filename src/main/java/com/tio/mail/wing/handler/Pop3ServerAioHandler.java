@@ -1,4 +1,3 @@
-// src/main/java/com/tio/mail/wing/handler/Pop3ServerAioHandler.java
 package com.tio.mail.wing.handler;
 
 import java.nio.ByteBuffer;
