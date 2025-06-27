@@ -1,3 +1,35 @@
+--# mail.baseColumns
+-- 邮件实例和消息的核心字段
+m.id,
+m.uid,
+m.internal_date,
+msg.raw_content,
+msg.size_in_bytes
+
+--# mailbox.findEmails.baseQuery
+-- 基础查询，用于获取邮件、内容、聚合后的标志以及计算出的序列号
+-- 注意：最后的 WHERE 条件将由 Java 代码动态填充
+SELECT
+  --#include(mail.baseColumns),
+  -- 使用窗口函数计算序列号 (按UID升序，这是IMAP标准)
+  ROW_NUMBER() OVER (ORDER BY m.uid ASC) as sequence_number,
+  -- 将一个邮件的所有标志聚合到一个数组中，如果没有标志则返回空数组
+  COALESCE(
+    (SELECT ARRAY_AGG(f.flag) FROM mw_mail_flag f WHERE f.mail_id = m.id),
+    '{}'
+  ) as flags
+FROM
+  mw_mail m
+JOIN
+  mw_mail_message msg ON m.message_id = msg.id
+WHERE
+  m.mailbox_id = ?
+  AND m.deleted = 0
+  -- 动态条件占位符，例如：AND (m.uid = ? OR m.uid BETWEEN ? AND ?)
+  AND (%s)
+ORDER BY
+  m.uid ASC
+  
 --# mailbox.user.findByUsername
 -- 根据用户名查找未删除的用户ID
 SELECT id FROM mw_user WHERE username = ? AND deleted = 0;
@@ -15,16 +47,19 @@ SELECT id FROM mw_mail_message WHERE content_hash = ?;
 UPDATE mw_mailbox SET uid_next = uid_next + 1 WHERE id = ? RETURNING uid_next - 1 AS next_uid;
 
 --# mailbox.getMessageByUid
--- [核心查询] 根据UID获取单封邮件的完整信息
+-- 根据 UID 获取单封邮件，包含聚合后的标志
 SELECT
-  m.id, m.uid, m.internal_date,
-  msg.raw_content, msg.size_in_bytes,
-  ARRAY_AGG(mf.flag) FILTER (WHERE mf.flag IS NOT NULL) as flags
-FROM mw_mail m
-JOIN mw_mail_message msg ON m.message_id = msg.id
-LEFT JOIN mw_mail_flag mf ON m.id = mf.mail_id
-WHERE m.mailbox_id = ? AND m.uid = ?
-GROUP BY m.id, msg.id;
+  --#include(mail.baseColumns),
+  COALESCE(
+    (SELECT ARRAY_AGG(f.flag) FROM mw_mail_flag f WHERE f.mail_id = m.id),
+    '{}'
+  ) as flags
+FROM
+  mw_mail m
+JOIN
+  mw_mail_message msg ON m.message_id = msg.id
+WHERE
+  m.mailbox_id = ? AND m.uid = ? AND m.deleted = 0
 
 --# mailbox.flags.addBatch
 -- 批量添加标志，利用 ON CONFLICT 忽略已存在的冲突，%s 会被Java代码动态替换为 VALUES (?, ?), ...
@@ -114,17 +149,22 @@ WITH ranked_emails AS (
 )
 
 --# mailbox.getActiveMessages
--- 使用 --include 来包含上面定义的CTE
---#include(mailbox.baseRankedEmailsCTE)
+-- 获取一个邮箱中所有未删除的邮件，包含聚合后的标志
 SELECT
-  r.id, r.uid, r.internal_date, r.seq_num,
-  msg.raw_content, msg.size_in_bytes,
-  ARRAY_AGG(mf.flag) FILTER (WHERE mf.flag IS NOT NULL) as flags
-FROM ranked_emails r
-JOIN mw_mail_message msg ON r.message_id = msg.id
-LEFT JOIN mw_mail_flag mf ON r.id = mf.mail_id
-GROUP BY r.id, r.uid, r.internal_date, r.seq_num, msg.id
-ORDER BY r.uid ASC;
+  --#include(mail.baseColumns),
+  -- 这里也需要聚合标志
+  COALESCE(
+    (SELECT ARRAY_AGG(f.flag) FROM mw_mail_flag f WHERE f.mail_id = m.id),
+    '{}'
+  ) as flags
+FROM
+  mw_mail m
+JOIN
+  mw_mail_message msg ON m.message_id = msg.id
+WHERE
+  m.mailbox_id = ? AND m.deleted = 0
+ORDER BY
+  m.uid ASC
 
 --# mailbox.findEmails.byUidSet
 -- 同样可以包含

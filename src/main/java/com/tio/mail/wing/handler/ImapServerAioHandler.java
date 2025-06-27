@@ -1,4 +1,3 @@
-// src/main/java/com/tio/mail/wing/handler/ImapServerAioHandler.java
 package com.tio.mail.wing.handler;
 
 import java.nio.ByteBuffer;
@@ -34,9 +33,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class ImapServerAioHandler implements ServerAioHandler {
 
-  // =================================================================
-  // 关键改动 1: 将正则表达式预编译为静态常量，提升性能
-  // =================================================================
   private static final Pattern BODY_FETCH_PATTERN = Pattern.compile("BODY(?:\\.PEEK)?\\[(.*?)\\]", Pattern.CASE_INSENSITIVE);
   private static final Pattern UID_FETCH_PATTERN = Pattern.compile("([\\d\\*:,\\-]+)\\s+\\((.*)\\)", Pattern.CASE_INSENSITIVE);
 
@@ -331,29 +327,30 @@ public class ImapServerAioHandler implements ServerAioHandler {
 
     String username = session.getUsername();
     String selectedMailbox = session.getSelectedMailbox();
-        
+
     String messageSet = matcher.group(1);
     String fetchItemsStr = matcher.group(2).toUpperCase();
 
-    
-    
     List<Email> emailsToFetch;
 
     if (isUidCommand) {
-      emailsToFetch = mailboxService.findEmailsByUidSet(username,selectedMailbox,messageSet);
+      emailsToFetch = mailboxService.findEmailsByUidSet(username, selectedMailbox, messageSet);
     } else {
-      emailsToFetch = mailboxService.findEmailsBySeqSet(messageSet, selectedMailbox,messageSet);
+      emailsToFetch = mailboxService.findEmailsBySeqSet(messageSet, selectedMailbox, messageSet);
     }
 
     if (emailsToFetch.isEmpty()) {
       ImapSessionContext.sendTaggedOk(ctx, tag, "FETCH completed.");
       return;
     }
+    List<Email> allEmails = mailboxService.getActiveMessages(session.getUsername(), selectedMailbox);
 
     for (Email email : emailsToFetch) {
       try {
         int sequenceNumber = allEmails.indexOf(email) + 1;
-        if (sequenceNumber == 0) continue;
+        if (sequenceNumber == 0) {
+          continue;
+        }
 
         List<String> responseParts = new ArrayList<>();
         if (isUidCommand || fetchItemsStr.contains("UID")) {
@@ -388,7 +385,7 @@ public class ImapServerAioHandler implements ServerAioHandler {
     }
 
     ImapSessionContext.sendTaggedOk(ctx, tag, "FETCH completed.");
-    mailboxService.clearRecentFlags(session.getUsername(),selectedMailbox);
+    mailboxService.clearRecentFlags(session.getUsername(), selectedMailbox);
   }
 
   // =================================================================
@@ -414,9 +411,9 @@ public class ImapServerAioHandler implements ServerAioHandler {
     List<Email> allEmails = mailboxService.getActiveMessages(session.getUsername(), selectedMailbox);
     List<Email> emailsToUpdate;
     if (isUidCommand) {
-      emailsToUpdate = mailboxService.findEmailsByUidSet(messageSet, allEmails);
+      emailsToUpdate = mailboxService.findEmailsByUidSet(session.getUsername(), session.getSelectedMailbox(), messageSet);
     } else {
-      emailsToUpdate = mailboxService.findEmailsBySeqSet(messageSet, allEmails);
+      emailsToUpdate = mailboxService.findEmailsBySeqSet(session.getUsername(), session.getSelectedMailbox(), messageSet);
     }
 
     for (Email email : emailsToUpdate) {

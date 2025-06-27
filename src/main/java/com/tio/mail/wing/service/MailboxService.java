@@ -159,7 +159,7 @@ public class MailboxService {
         Db.save("mw_mail", "id", mailInstance);
 
         // 5. 为新邮件设置 \Recent 标志 (mw_mail_flag)
-        Row recentFlag =  Row.create().set("mail_id", id).set("flag", "\\Recent");
+        Row recentFlag = Row.create().set("mail_id", id).set("flag", "\\Recent");
         Db.save("mw_mail_flag", recentFlag);
 
         log.info("Saved new email for {} in mailbox {} with UID {}. Mail instance ID: {}", username, mailboxName, nextUid, id);
@@ -282,9 +282,9 @@ public class MailboxService {
   }
 
   /**
-   * [IMAP核心] 根据UID集合获取邮件列表。
-   * 优化：将过滤逻辑下推到数据库，避免在内存中操作大列表。
-   */
+  * [IMAP核心] 根据UID集合获取邮件列表。
+  * 优化：将过滤逻辑下推到数据库，避免在内存中操作大列表。
+  */
   public List<Email> findEmailsByUidSet(String username, String mailboxName, String messageSet) {
     Row user = mwUserService.getUserByUsername(username);
     if (user == null) {
@@ -304,46 +304,64 @@ public class MailboxService {
       return Collections.emptyList();
     }
 
+    // 使用新的带占位符的SQL模板
     String baseSql = SqlTemplates.get("mailbox.findEmails.baseQuery");
+    // 将动态生成的WHERE条件填入占位符 %s
     String finalSql = String.format(baseSql, whereClause.getClause());
 
     List<Object> params = new ArrayList<>();
-    params.add(mailboxId);
-    params.addAll(whereClause.getParams());
+    params.add(mailboxId); // 这是 baseQuery 中的第一个 '?'
+    params.addAll(whereClause.getParams()); // 这是动态条件中的参数
 
     List<Row> mailRows = Db.find(finalSql, params.toArray());
     return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
 
-  /**
-   * [IMAP核心] 根据序号集合获取邮件列表。
-   * 优化：使用窗口函数在数据库中过滤，避免内存操作。
-   */
-  public List<Email> findEmailsBySeqSet(String username, String mailboxName, String messageSet) {
-    Row user = mwUserService.getUserByUsername(username);
-    if (user == null)
-      return Collections.emptyList();
-    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
-    if (mailbox == null)
-      return Collections.emptyList();
-    long mailboxId = mailbox.getLong("id");
+//com/tio/mail/wing/service/MailboxService.java
 
-    // 解析 messageSet 并构建 SQL 条件
-    WhereClauseResult whereClause = buildSeqWhereClause(messageSet, mailboxId);
-    if (whereClause.getClause().isEmpty()) {
-      return Collections.emptyList();
-    }
+ /**
+  * [IMAP核心] 根据序号集合获取邮件列表。
+  * 优化：使用窗口函数在数据库中过滤，避免内存操作。
+  */
+ public List<Email> findEmailsBySeqSet(String username, String mailboxName, String messageSet) {
+   Row user = mwUserService.getUserByUsername(username);
+   if (user == null)
+     return Collections.emptyList();
+   Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
+   if (mailbox == null)
+     return Collections.emptyList();
+   long mailboxId = mailbox.getLong("id");
 
-    String baseSql = SqlTemplates.get("mailbox.findEmails.bySeqSet");
-    String finalSql = String.format(baseSql, whereClause.getClause());
+   // 解析 messageSet 并构建 SQL 条件
+   // 注意：这里的 helper 方法需要返回针对 sequence_number 的条件
+   WhereClauseResult whereClause = buildSeqWhereClause(messageSet, mailboxId);
+   if (whereClause.getClause().isEmpty()) {
+     return Collections.emptyList();
+   }
 
-    List<Object> params = new ArrayList<>();
-    params.add(mailboxId);
-    params.addAll(whereClause.getParams());
+   // 我们需要一个能够按序号过滤的子查询
+   String baseQueryWithSubquery = 
+       "SELECT * FROM (" +
+       "  SELECT" +
+       "    --#include(mail.baseColumns)," +
+       "    ROW_NUMBER() OVER (ORDER BY m.uid ASC) as sequence_number," +
+       "    COALESCE((SELECT ARRAY_AGG(f.flag) FROM mw_mail_flag f WHERE f.mail_id = m.id), '{}') as flags " +
+       "  FROM mw_mail m JOIN mw_mail_message msg ON m.message_id = msg.id " +
+       "  WHERE m.mailbox_id = ? AND m.deleted = 0" +
+       ") AS subquery " +
+       "WHERE %s"; // 动态条件作用于子查询的结果
 
-    List<Row> mailRows = Db.find(finalSql, params.toArray());
-    return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
-  }
+   // 使用 SqlTemplates 动态解析 #include
+   String resolvedBaseQuery = SqlTemplates.get(baseQueryWithSubquery);
+   String finalSql = String.format(resolvedBaseQuery, whereClause.getClause());
+
+   List<Object> params = new ArrayList<>();
+   params.add(mailboxId); // 这是子查询中的 '?'
+   params.addAll(whereClause.getParams()); // 这是外部WHERE条件的参数
+
+   List<Row> mailRows = Db.find(finalSql, params.toArray());
+   return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
+ }
 
   // =================================================================
   // == 私有辅助方法
@@ -353,15 +371,22 @@ public class MailboxService {
     return Db.findFirst(SqlTemplates.get("mailbox.getByName"), userId, mailboxName);
   }
 
+  //com/tio/mail/wing/service/MailboxService.java
+
   /**
-   * 将数据库行（包含聚合后的标志数组）转换为 Email DTO 对象。
-   */
+  * 将数据库行（包含聚合后的标志数组）转换为 Email DTO 对象。
+  */
   private Email rowToEmailWithAggregatedFlags(Row row) {
     Email email = new Email();
     email.setId(row.getLong("id"));
     email.setUid(row.getLong("uid"));
     email.setRawContent(row.getStr("raw_content"));
     email.setSize(row.getInt("size_in_bytes"));
+
+    // 新增：设置序列号
+    if (row.get("sequence_number") != null) {
+      email.setSequenceNumber(row.getInt("sequence_number"));
+    }
 
     OffsetDateTime internalDate = row.getOffsetDateTime("internal_date");
     if (internalDate != null) {
@@ -370,20 +395,28 @@ public class MailboxService {
 
     Object flagsObj = row.get("flags");
     Set<String> flags = new HashSet<>();
-    if (flagsObj instanceof List) {
-      ((List<?>) flagsObj).forEach(f -> {
-        if (f != null)
-          flags.add(String.valueOf(f));
-      });
-    } else if (flagsObj instanceof java.sql.Array) {
+    if (flagsObj instanceof java.sql.Array) { // PostgreSQL 返回 java.sql.Array
       try {
-        String[] flagArray = (String[]) ((java.sql.Array) flagsObj).getArray();
-        if (flagArray != null) {
-          flags.addAll(Arrays.asList(flagArray));
+        // 注意：PostgreSQL JDBC驱动返回的数组可能是null，即使我们用了COALESCE
+        Object arrayObj = ((java.sql.Array) flagsObj).getArray();
+        if (arrayObj instanceof String[]) {
+          String[] flagArray = (String[]) arrayObj;
+          if (flagArray != null) {
+            for (String flag : flagArray) {
+              if (flag != null) { // 标志本身也可能为null
+                flags.add(flag);
+              }
+            }
+          }
         }
       } catch (SQLException e) {
         log.error("Failed to parse flags array from database for mail_id {}", row.getLong("id"), e);
       }
+    } else if (flagsObj instanceof List) { // 其他数据库可能返回List
+      ((List<?>) flagsObj).forEach(f -> {
+        if (f != null)
+          flags.add(String.valueOf(f));
+      });
     }
     email.setFlags(flags);
 
