@@ -1,4 +1,3 @@
-// src/main/java/com/tio/mail/wing/listener/Pop3ServerAioListener.java
 package com.tio.mail.wing.listener;
 
 import com.litongjava.aio.Packet;
