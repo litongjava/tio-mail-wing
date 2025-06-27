@@ -1,12 +1,12 @@
 package com.tio.mail.wing;
 
-import com.litongjava.annotation.AComponentScan;
 import com.litongjava.tio.boot.TioApplication;
+import com.tio.mail.wing.config.MwBootConfig;
 
-@AComponentScan
 public class TioMailWingApplication {
-
   public static void main(String[] args) {
-    TioApplication.run(TioMailWingApplication.class, args);
+    MwBootConfig mwBootConfig = new MwBootConfig();
+
+    TioApplication.run(TioMailWingApplication.class, mwBootConfig, args);
   }
 }

@@ -8,7 +8,7 @@ import com.litongjava.db.activerecord.Db;
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.tio.boot.testing.TioBootTest;
-import com.tio.mail.wing.config.MwAdminAppConfig;
+import com.tio.mail.wing.config.MwBootConfig;
 import com.tio.mail.wing.model.Email;
 import com.tio.mail.wing.model.MailRaw;
 import com.tio.mail.wing.utils.MailRawUtils;
@@ -17,7 +17,7 @@ public class MailboxServiceTest {
 
   @Test
   public void testSaveEmailAndGetActiveMessages() {
-    TioBootTest.runWith(MwAdminAppConfig.class);
+    TioBootTest.runWith(MwBootConfig.class);
 
     // Arrange: Define the email content
     String fromUser = "user1@tio.com";

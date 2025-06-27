@@ -1,9 +1,7 @@
-// src/main/java/com/tio/mail/wing/config/Pop3ServerConfig.java
 package com.tio.mail.wing.config;
 
 import java.io.IOException;
 
-import com.litongjava.annotation.AConfiguration;
 import com.litongjava.annotation.Initialization;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.tio.server.ServerTioConfig;
@@ -15,7 +13,6 @@ import com.tio.mail.wing.listener.Pop3ServerAioListener;
 
 import lombok.extern.slf4j.Slf4j;
 
-@AConfiguration
 @Slf4j
 public class Pop3ServerConfig {
 

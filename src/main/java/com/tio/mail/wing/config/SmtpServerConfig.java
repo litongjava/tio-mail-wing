@@ -1,10 +1,7 @@
-// src/main/java/com/tio/mail/wing/config/SmtpServerConfig.java
 package com.tio.mail.wing.config;
 
 import java.io.IOException;
 
-import com.litongjava.annotation.AConfiguration;
-import com.litongjava.annotation.Initialization;
 import com.litongjava.tio.server.ServerTioConfig;
 import com.litongjava.tio.server.TioServer;
 import com.litongjava.tio.utils.environment.EnvUtils;
@@ -13,11 +10,9 @@ import com.tio.mail.wing.listener.SmtpServerAioListener;
 
 import lombok.extern.slf4j.Slf4j;
 
-@AConfiguration
 @Slf4j
 public class SmtpServerConfig {
 
-  @Initialization
   public void startSmtpServer() {
     SmtpServerAioHandler serverHandler = new SmtpServerAioHandler();
     SmtpServerAioListener serverListener = new SmtpServerAioListener();
