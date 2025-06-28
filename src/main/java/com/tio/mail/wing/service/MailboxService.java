@@ -267,7 +267,8 @@ public class MailboxService {
 
     if (add) {
       String valuePlaceholders = String.join(",", Collections.nCopies(newFlags.size(), "(?, ?)"));
-      String sql = String.format(SqlTemplates.get("mailbox.flags.addBatch"), valuePlaceholders);
+      String format = SqlTemplates.get("mailbox.flags.addBatch");
+      String sql = String.format(format, valuePlaceholders);
 
       List<Object> params = new ArrayList<>();
       for (String flag : newFlags) {
@@ -398,34 +399,16 @@ public class MailboxService {
     if (internalDate != null) {
       email.setInternalDate(internalDate);
     }
-
-    Object flagsObj = row.get("flags");
-    Set<String> flags = new HashSet<>();
-    if (flagsObj instanceof java.sql.Array) { // PostgreSQL 返回 java.sql.Array
-      try {
-        // 注意：PostgreSQL JDBC驱动返回的数组可能是null，即使我们用了COALESCE
-        Object arrayObj = ((java.sql.Array) flagsObj).getArray();
-        if (arrayObj instanceof String[]) {
-          String[] flagArray = (String[]) arrayObj;
-          if (flagArray != null) {
-            for (String flag : flagArray) {
-              if (flag != null) { // 标志本身也可能为null
-                flags.add(flag);
-              }
-            }
-          }
-        }
-      } catch (SQLException e) {
-        log.error("Failed to parse flags array from database for mail_id {}", row.getLong("id"), e);
+    String[] flagsArray = row.getStringArray("flags");
+    
+    if (flagsArray != null) {
+      Set<String> flags = new HashSet<>(flagsArray.length);
+      for (String string : flagsArray) {
+        flags.add(string);
       }
-    } else if (flagsObj instanceof List) { // 其他数据库可能返回List
-      ((List<?>) flagsObj).forEach(f -> {
-        if (f != null)
-          flags.add(String.valueOf(f));
-      });
+      email.setFlags(flags);
     }
-    email.setFlags(flags);
-
+    
     return email;
   }
 

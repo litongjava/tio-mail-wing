@@ -228,7 +228,8 @@ public class ImapService {
         continue;
 
       // 先把整封 raw byte[] 读出来，用于大小计算
-      byte[] raw = e.getRawContent().getBytes(StandardCharsets.UTF_8);
+      String rawContent = e.getRawContent();
+      byte[] raw = rawContent.getBytes(StandardCharsets.UTF_8);
       int fullSize = raw.length;
 
       // 按 固定顺序 UID → RFC822.SIZE → FLAGS 构造 parts 列表
@@ -240,14 +241,22 @@ public class ImapService {
         parts.add("RFC822.SIZE " + fullSize);
       }
       if (items.contains("FLAGS")) {
-        parts.add("FLAGS (" + String.join(" ", e.getFlags()) + ")");
+        Set<String> flags = e.getFlags();
+        if (flags != null) {
+          parts.add("FLAGS (" + String.join(" ", flags) + ")");
+        } else {
+          parts.add("FLAGS ()");
+        }
       }
 
       String prefix = "* " + seq + " FETCH (" + String.join(" ", parts);
 
       // BODY.PEEK[]（全文）
-      if (items.contains("BODY.PEEK[]")) {
-        sb.append(prefix).append(" BODY[] {").append(fullSize).append("}\r\n").append(e.getRawContent()).append("\r\n)\r\n");
+      if (items.contains("BODY.PEEK[]") || items.contains("BODY[]")) {
+        sb.append(prefix);
+        sb.append(" BODY[] {").append(fullSize).append("}\r\n");
+        sb.append(rawContent);
+        sb.append("\r\n)\r\n");
         continue;
       }
 
@@ -255,22 +264,14 @@ public class ImapService {
       Matcher b = BODY_FETCH_PATTERN.matcher(items);
 
       if (b.find()) {
-//        String partToken = b.group(0);
-//        String hdr = parseHeaderFields(e.getRawContent(), EMAIL_HEADER_FIELDS);
-//        byte[] hdrBytes = hdr.getBytes(StandardCharsets.UTF_8);
-        //sb.append(prefix).append(" ").append(partToken).append(" {").append(hdrBytes.length).append("}\r\n")
-        //.append(hdr).append("\r\n)\r\n");
-        String str="* 2 FETCH (UID 2 RFC822.SIZE 621 FLAGS (\\Recent) BODY[HEADER.FIELDS (FROM TO CC BCC SUBJECT DATE MESSAGE-ID PRIORITY X-PRIORITY REFERENCES NEWSGROUPS IN-REPLY-TO CONTENT-TYPE REPLY-TO)] {230}\r\n"
-            + "Message-ID: <157dc58f-fa68-4420-a6ee-5df03682db72@localdomain>\r\n"
-            + "Date: Mon, 23 Jun 2025 09:06:36 -1000\r\n"
-            + "To: bob@localdomain\r\n"
-            + "From: alice <alice@localdomain>\r\n"
-            + "Subject: Work\r\n"
-            + "Content-Type: text/plain; charset=UTF-8; format=flowed\r\n"
-            + "\r\n"
-            + ")\r\n";
-        sb = new StringBuilder();
-        sb.append(str);
+        String partToken = b.group(0);
+        partToken = partToken.replace("BODY.PEEK", "BODY");
+        String hdr = parseHeaderFields(rawContent, EMAIL_HEADER_FIELDS);
+        byte[] hdrBytes = hdr.getBytes(StandardCharsets.UTF_8);
+        sb.append(prefix).append(" ").append(partToken);
+        sb.append(" {").append(hdrBytes.length).append("}\r\n");
+        sb.append(hdr);
+        sb.append(hdr).append("\r\n)\r\n");
       } else {
         sb.append(prefix).append(")\r\n");
       }

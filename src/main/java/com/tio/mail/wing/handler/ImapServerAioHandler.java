@@ -49,9 +49,13 @@ public class ImapServerAioHandler implements ServerAioHandler {
   public void handler(Packet packet, ChannelContext ctx) throws Exception {
     ImapPacket imapPacket = (ImapPacket) packet;
     String line = imapPacket.getLine().trim();
-    log.info("IMAP <<< {}", line);
-
     ImapSessionContext session = (ImapSessionContext) ctx.get("sessionContext");
+    String username = session.getUsername();
+    if (username != null) {
+      log.info("user {} <<< {}", username, line);
+    } else {
+      log.info("<<< {}", line);
+    }
 
     if (session.getState() == ImapSessionContext.State.AUTH_WAIT_USERNAME || session.getState() == ImapSessionContext.State.AUTH_WAIT_PASSWORD) {
       String reply = imapService.handleAuthData(session, line);
@@ -131,7 +135,6 @@ public class ImapServerAioHandler implements ServerAioHandler {
     }
 
     if (reply != null) {
-      log.info("reply:{}", reply);
       Tio.send(ctx, new ImapPacket(reply));
     }
   }

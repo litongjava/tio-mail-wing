@@ -38,7 +38,6 @@ WHERE
   m.mailbox_id = ? AND m.uid = ? AND m.deleted = 0
 
 --# mailbox.flags.addBatch
--- 批量添加标志，利用 ON CONFLICT 忽略已存在的冲突，%s 会被Java代码动态替换为 VALUES (?, ?), ...
 INSERT INTO mw_mail_flag (mail_id, flag) VALUES %s ON CONFLICT (mail_id, flag) DO NOTHING;
 
 --# mailbox.flags.removeBatch
