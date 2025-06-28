@@ -545,4 +545,17 @@ public class MailboxService {
     Db.save("mw_mailbox", "id", newMailbox);
     log.info("Created mailbox '{}' (id={}) for user {}", mailboxName, mailboxId, username);
   }
+
+  public void copyEmailsByUidSet(String username, String srcMailboxName, String uidSet, String destMailboxName) {
+    // 1. 找到要复制的邮件
+    List<Email> toCopy = findEmailsByUidSet(username, srcMailboxName, uidSet);
+    if (toCopy.isEmpty()) {
+      return;
+    }
+    // 2. 对每封邮件，重新用 saveEmailInternal 插入到目标 mailbox
+    for (Email e : toCopy) {
+      // rawContent 来自 Email.getRawContent()
+      saveEmailInternal(username, destMailboxName, e.getRawContent());
+    }    
+  }
 }

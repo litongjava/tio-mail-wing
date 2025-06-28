@@ -324,8 +324,33 @@ public class ImapService {
       return handleFetch(session, tag, sub, true);
     case "STORE":
       return handleStore(session, tag, sub, true);
+    case "COPY":                                 
+      return handleCopy(session, tag, sub, true);
     default:
       return tag + " BAD Unsupported UID command: " + cmd + "\r\n";
+    }
+  }
+
+  private String handleCopy(ImapSessionContext session, String tag, String args, boolean b) {
+    if (session.getState() != ImapSessionContext.State.SELECTED) {
+      return tag + " NO COPY failed: No mailbox selected\r\n";
+    }
+    // 拆分出消息集和目标 mailbox
+    String[] p = args.split("\\s+", 2);
+    if (p.length < 2) {
+      return tag + " BAD COPY arguments invalid\r\n";
+    }
+    String set = p[0];
+    String destMailbox = unquote(p[1]);
+    String user = session.getUsername();
+    String srcMailbox = session.getSelectedMailbox();
+
+    try {
+      // 调用新加的接口
+      mailboxService.copyEmailsByUidSet(user, srcMailbox, set, destMailbox);
+      return tag + " OK COPY completed.\r\n";
+    } catch (Exception e) {
+      return tag + " NO COPY failed: " + e.getMessage() + "\r\n";
     }
   }
 
