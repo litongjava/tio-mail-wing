@@ -24,6 +24,7 @@ public class ImapSessionContext {
   }
 
   private State state = State.NON_AUTHENTICATED;
+  private Long userId;
   private String username;
   private String selectedMailbox;
 

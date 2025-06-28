@@ -23,5 +23,6 @@ public class Pop3SessionContext {
   }
 
   private State state = State.AUTHORIZATION;
+  private Long userId;
   private String username;
 }

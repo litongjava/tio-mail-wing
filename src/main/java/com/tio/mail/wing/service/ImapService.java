@@ -13,6 +13,7 @@ import java.util.regex.Pattern;
 
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
+import com.litongjava.tio.http.server.util.SseEmitter;
 import com.litongjava.tio.utils.base64.Base64Utils;
 import com.tio.mail.wing.handler.ImapSessionContext;
 import com.tio.mail.wing.model.Email;
@@ -120,6 +121,7 @@ public class ImapService {
         session.setState(ImapSessionContext.State.AUTH_WAIT_PASSWORD);
         String chal = Base64Utils.encodeToString("Password:".getBytes(StandardCharsets.UTF_8));
         sb.append("+ ").append(chal).append("\r\n");
+      
       } else if (session.getState() == ImapSessionContext.State.AUTH_WAIT_PASSWORD) {
         String user, pass;
         if (decoded.contains("\0")) {
@@ -130,8 +132,10 @@ public class ImapService {
           user = session.getUsername();
           pass = decoded;
         }
-        if (userService.authenticate(user, pass)) {
+        Long userId = userService.authenticate(user, pass);
+        if (userId!=null) {
           session.setUsername(user);
+          session.setUserId(userId);
           session.setState(ImapSessionContext.State.AUTHENTICATED);
           sb.append(tag).append(" OK AUTHENTICATE completed.").append("\r\n");
         } else {
@@ -155,8 +159,11 @@ public class ImapService {
     }
     String user = unquote(parts[0]);
     String pass = unquote(parts[1]);
-    if (userService.authenticate(user, pass)) {
+    Long userId = userService.authenticate(user, pass);
+    if (userId!=null) {
       session.setUsername(user);
+      session.setUserId(userId);
+
       session.setState(ImapSessionContext.State.AUTHENTICATED);
       return tag + " OK LOGIN completed." + "\r\n";
     } else {
@@ -174,7 +181,8 @@ public class ImapService {
   public String handleSelect(ImapSessionContext session, String tag, String args) {
     String mailbox = unquote(args);
     StringBuilder sb = new StringBuilder();
-    if (!"INBOX".equalsIgnoreCase(mailbox)) {
+    Long userId=session.getUserId();
+    if (!mailboxService.exitsMailBox(userId, mailbox)) {
       return tag + " NO SELECT failed: mailbox not found: " + mailbox + "\r\n";
     }
     session.setSelectedMailbox(mailbox);

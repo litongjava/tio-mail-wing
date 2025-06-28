@@ -40,16 +40,21 @@ public class Pop3Service {
       break;
 
     case "PASS":
-      if (sessionContext.getUsername() == null) {
+      String username = sessionContext.getUsername();
+      if (username == null) {
         resp.append("-ERR USER command first.\r\n");
       } else if (parts.length < 2) {
         resp.append("-ERR Password required.\r\n");
-      } else if (userService.authenticate(sessionContext.getUsername(), parts[1])) {
-        sessionContext.setState(Pop3SessionContext.State.TRANSACTION);
-        resp.append("+OK Mailbox open.\r\n");
       } else {
-        sessionContext.setUsername(null);
-        resp.append("-ERR Authentication failed.\r\n");
+        Long userId = userService.authenticate(username, parts[1]);
+        if (userId != null) {
+          sessionContext.setState(Pop3SessionContext.State.TRANSACTION);
+          sessionContext.setUserId(userId);
+          resp.append("+OK Mailbox open.\r\n");
+        } else {
+          sessionContext.setUsername(null);
+          resp.append("-ERR Authentication failed.\r\n");
+        }
       }
       break;
 

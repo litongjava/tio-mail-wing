@@ -5,6 +5,7 @@ import java.util.Base64;
 import java.util.UUID;
 
 import com.litongjava.jfinal.aop.Aop;
+import com.litongjava.tio.http.server.util.SseEmitter;
 import com.tio.mail.wing.handler.SmtpSessionContext;
 
 public class SmtpService {
@@ -46,8 +47,11 @@ public class SmtpService {
         String challenge = Base64.getEncoder().encodeToString("Password:".getBytes(StandardCharsets.UTF_8));
         return "334 " + challenge + "\r\n";
       } else if (session.getState() == SmtpSessionContext.State.AUTH_WAIT_PASSWORD) {
-        if (userService.authenticate(session.getUsername(), decoded)) {
+        String username = session.getUsername();
+        Long userId = userService.authenticate(username, decoded);
+        if (userId!=null) {
           session.setAuthenticated(true);
+          session.setUserId(userId);
           session.setState(SmtpSessionContext.State.GREETED);
           return "235 Authentication successful\r\n";
         } else {

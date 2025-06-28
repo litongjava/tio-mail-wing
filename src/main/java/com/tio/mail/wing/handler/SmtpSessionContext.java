@@ -34,6 +34,7 @@ public class SmtpSessionContext {
   private State state = State.CONNECTED;
   private boolean authenticated = false;
   private String username; // 认证后的用户名
+  private Long userId;
 
   // 用于一封邮件的临时数据
   private String fromAddress;

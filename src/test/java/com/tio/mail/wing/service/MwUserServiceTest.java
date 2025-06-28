@@ -19,8 +19,8 @@ public class MwUserServiceTest {
   @Test
   public void testAuthenticate() {
     TioBootTest.runWith(MwBootConfig.class);
-    boolean userExists = Aop.get(MwUserService.class).authenticate("user1@tio.com", "00000000");
-    System.out.println(userExists);
+    Long userId = Aop.get(MwUserService.class).authenticate("user1@tio.com", "00000000");
+    System.out.println(userId);
   }
   
   @Test

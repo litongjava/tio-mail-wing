@@ -14,13 +14,16 @@ public class MwUserService {
    * @param password 密码
    * @return 是否成功
    */
-  public boolean authenticate(String username, String password) {
-    String sql = "select password_hash from mw_user where username=? and deleted=0";
-    String user_password_hash = Db.queryStr(sql,username);
+  public Long authenticate(String username, String password) {
+    String sql = "select id,password_hash from mw_user where username=? and deleted=0";
+    Row row = Db.findFirst(sql,username);
+    String user_password_hash = row.getString("password_hash");
     if(user_password_hash!=null) {
-      return Sha256Utils.checkPassword(password, user_password_hash);
+      if(Sha256Utils.checkPassword(password, user_password_hash)) {
+        return row.getLong("id");
+      }
     }
-    return false;
+    return null;
     
   }
 

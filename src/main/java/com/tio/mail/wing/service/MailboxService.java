@@ -536,4 +536,10 @@ public class MailboxService {
       saveEmailInternal(username, destMailboxName, e.getRawContent());
     }
   }
+
+  public boolean exitsMailBox(Long userId, String mailboxName) {
+    String sql = "select count(1) from mw_mailbox where user_id=? and name=?";
+    return Db.existsBySql(sql, userId, mailboxName);
+
+  }
 }
