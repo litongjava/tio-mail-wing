@@ -13,7 +13,6 @@ import java.util.regex.Pattern;
 
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
-import com.litongjava.tio.http.server.util.SseEmitter;
 import com.litongjava.tio.utils.base64.Base64Utils;
 import com.tio.mail.wing.handler.ImapSessionContext;
 import com.tio.mail.wing.model.Email;
@@ -77,7 +76,7 @@ public class ImapService {
 
   public String handleCapability(String tag) {
     StringBuilder sb = new StringBuilder();
-    sb.append("* CAPABILITY IMAP4rev1 AUTH=LOGIN IDLE UIDPLUS ID LITERAL+").append("\r\n");
+    sb.append("* CAPABILITY IMAP4rev1 AUTH=LOGIN IDLE UIDPLUS ID LITERAL+ MOVE").append("\r\n");
     sb.append(tag).append(" OK CAPABILITY").append("\r\n");
     return sb.toString();
   }
@@ -340,8 +339,33 @@ public class ImapService {
       return handleStore(session, tag, sub, true);
     case "COPY":
       return handleCopy(session, tag, sub, true);
+    case "MOVE":
+      return handleMove(session, tag, sub, true);
     default:
       return tag + " BAD Unsupported UID command: " + cmd + "\r\n";
+    }
+  }
+
+  /**
+   * UID MOVE <set> "<mailbox>"
+   */
+  public String handleMove(ImapSessionContext session, String tag, String args, boolean isUid) {
+    if (session.getState() != ImapSessionContext.State.SELECTED) {
+      return tag + " NO MOVE failed: No mailbox selected\r\n";
+    }
+    String[] p = args.split("\\s+", 2);
+    if (p.length < 2) {
+      return tag + " BAD MOVE arguments invalid\r\n";
+    }
+    String set = p[0];
+    String destMailbox = unquote(p[1]);
+    String user = session.getUsername();
+    String srcMailbox = session.getSelectedMailbox();
+    try {
+      mailboxService.moveEmailsByUidSet(user, srcMailbox, set, destMailbox);
+      return tag + " OK MOVE completed.\r\n";
+    } catch (Exception e) {
+      return tag + " NO MOVE failed: " + e.getMessage() + "\r\n";
     }
   }
 

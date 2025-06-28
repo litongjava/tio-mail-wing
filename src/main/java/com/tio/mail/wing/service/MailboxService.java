@@ -542,4 +542,21 @@ public class MailboxService {
     return Db.existsBySql(sql, userId, mailboxName);
 
   }
+
+  /**
+   * IMAP MOVE: 按 UID set 把邮件移到目标 mailbox
+   * 等价于：COPY → 标记 \Deleted → EXPUNGE
+   */
+  public void moveEmailsByUidSet(String username, String srcMailbox, String uidSet, String destMailbox) {
+    // 1. 先复制
+    copyEmailsByUidSet(username, srcMailbox, uidSet, destMailbox);
+    // 2. 标记为 Deleted
+    List<Email> originals = findEmailsByUidSet(username, srcMailbox, uidSet);
+    for (Email e : originals) {
+      // 给每封原邮件打上 \Deleted
+      storeFlags(e, Collections.singleton("\\Deleted"), true);
+    }
+    // 3. 清理所有标记过 Deleted 的邮件
+    expunge(username, srcMailbox);
+  }
 }
