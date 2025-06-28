@@ -23,6 +23,7 @@ import com.litongjava.tio.utils.hutool.StrUtil;
 import com.litongjava.tio.utils.snowflake.SnowflakeIdUtils;
 import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.model.Email;
+import com.tio.mail.wing.result.WhereClauseResult;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -181,7 +182,8 @@ public class MailboxService {
         Db.save("mw_mail", "id", mailInstance);
 
         // 5. 为新邮件设置 \Recent 标志 (mw_mail_flag)
-        Row recentFlag = Row.create().set("mail_id", id).set("flag", "\\Recent");
+        long flagId = SnowflakeIdUtils.id();
+        Row recentFlag = Row.by("id", flagId).set("mail_id", id).set("flag", "\\Recent");
         Db.save("mw_mail_flag", recentFlag);
 
         log.info("Saved new email for {} in mailbox {} with UID {}. Mail instance ID: {}", username, mailboxName, nextUid, id);
@@ -266,16 +268,11 @@ public class MailboxService {
     long mailId = email.getId();
 
     if (add) {
-      String valuePlaceholders = String.join(",", Collections.nCopies(newFlags.size(), "(?, ?)"));
-      String format = SqlTemplates.get("mailbox.flags.addBatch");
-      String sql = String.format(format, valuePlaceholders);
-
-      List<Object> params = new ArrayList<>();
+      String sql = SqlTemplates.get("mailbox.flags.addBatch");
       for (String flag : newFlags) {
-        params.add(mailId);
-        params.add(flag);
+        Db.updateBySql(sql, SnowflakeIdUtils.id(), mailId, flag);
       }
-      Db.updateBySql(sql, params.toArray());
+
     } else {
       String flagPlaceholders = String.join(",", Collections.nCopies(newFlags.size(), "?"));
       String sql = String.format(SqlTemplates.get("mailbox.flags.removeBatch"), flagPlaceholders);
@@ -400,7 +397,7 @@ public class MailboxService {
       email.setInternalDate(internalDate);
     }
     String[] flagsArray = row.getStringArray("flags");
-    
+
     if (flagsArray != null) {
       Set<String> flags = new HashSet<>(flagsArray.length);
       for (String string : flagsArray) {
@@ -408,7 +405,7 @@ public class MailboxService {
       }
       email.setFlags(flags);
     }
-    
+
     return email;
   }
 
@@ -470,25 +467,6 @@ public class MailboxService {
       }
     }
     return headers;
-  }
-
-  // Helper class for returning WHERE clause and its parameters
-  private static class WhereClauseResult {
-    private final String clause;
-    private final List<Object> params;
-
-    public WhereClauseResult(String clause, List<Object> params) {
-      this.clause = clause;
-      this.params = params;
-    }
-
-    public String getClause() {
-      return clause;
-    }
-
-    public List<Object> getParams() {
-      return params;
-    }
   }
 
   /**
@@ -556,6 +534,6 @@ public class MailboxService {
     for (Email e : toCopy) {
       // rawContent 来自 Email.getRawContent()
       saveEmailInternal(username, destMailboxName, e.getRawContent());
-    }    
+    }
   }
 }

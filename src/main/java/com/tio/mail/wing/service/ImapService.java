@@ -214,9 +214,15 @@ public class ImapService {
     String set = m.group(1);
     String items = m.group(2).toUpperCase();
 
-    List<Email> toFetch = isUid ? mailboxService.findEmailsByUidSet(user, box, set) : mailboxService.findEmailsBySeqSet(user, box, set);
+    List<Email> toFetch = null;
+    if (isUid) {
+      toFetch = mailboxService.findEmailsByUidSet(user, box, set);
+    } else {
+      toFetch = mailboxService.findEmailsBySeqSet(user, box, set);
+    }
+
     StringBuilder sb = new StringBuilder();
-    if (toFetch.isEmpty()) {
+    if (toFetch == null || toFetch.isEmpty()) {
       sb.append(tag).append(" OK FETCH completed.\r\n");
       return sb.toString();
     }
@@ -324,7 +330,7 @@ public class ImapService {
       return handleFetch(session, tag, sub, true);
     case "STORE":
       return handleStore(session, tag, sub, true);
-    case "COPY":                                 
+    case "COPY":
       return handleCopy(session, tag, sub, true);
     default:
       return tag + " BAD Unsupported UID command: " + cmd + "\r\n";

@@ -3,6 +3,7 @@ package com.tio.mail.wing.handler;
 import java.nio.ByteBuffer;
 
 import com.litongjava.aio.Packet;
+import com.litongjava.db.activerecord.ActiveRecordException;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
@@ -130,8 +131,13 @@ public class ImapServerAioHandler implements ServerAioHandler {
         reply = tag + " BAD Unknown or unimplemented command.\r\n";
       }
     } catch (Exception e) {
-      log.error("Error handling IMAP command: " + line, e);
       reply = tag + " BAD Internal server error.\r\n";
+      if (e instanceof ActiveRecordException) {
+        ActiveRecordException ae = (ActiveRecordException) e;
+        log.error("Error handling IMAP command:{},{},{}", line, ae.getSql(), ae.getParas(), e);
+      } else {
+        log.error("Error handling IMAP command: " + line);
+      }
     }
 
     if (reply != null) {
