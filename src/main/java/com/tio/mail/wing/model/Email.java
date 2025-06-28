@@ -1,4 +1,3 @@
-// src/main/java/com/tio/mail/wing/model/Email.java
 package com.tio.mail.wing.model;
 
 import java.time.OffsetDateTime;

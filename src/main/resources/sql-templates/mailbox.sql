@@ -6,33 +6,9 @@ m.internal_date,
 msg.raw_content,
 msg.size_in_bytes
 
---# mailbox.findEmails.baseQuery
--- 基础查询，用于获取邮件、内容、聚合后的标志以及计算出的序列号
--- 注意：最后的 WHERE 条件将由 Java 代码动态填充
-SELECT
-  --#include(mail.baseColumns),
-  -- 使用窗口函数计算序列号 (按UID升序，这是IMAP标准)
-  ROW_NUMBER() OVER (ORDER BY m.uid ASC) as sequence_number,
-  -- 将一个邮件的所有标志聚合到一个数组中，如果没有标志则返回空数组
-  COALESCE(
-    (SELECT ARRAY_AGG(f.flag) FROM mw_mail_flag f WHERE f.mail_id = m.id),
-    '{}'
-  ) as flags
-FROM
-  mw_mail m
-JOIN
-  mw_mail_message msg ON m.message_id = msg.id
-WHERE
-  m.mailbox_id = ?
-  AND m.deleted = 0
-  -- 动态条件占位符，例如：AND (m.uid = ? OR m.uid BETWEEN ? AND ?)
-  AND (%s)
-ORDER BY
-  m.uid ASC
-  
 --# mailbox.user.findByUsername
 -- 根据用户名查找未删除的用户ID
-SELECT id FROM mw_user WHERE username = ? AND deleted = 0;
+SELECT * FROM mw_user WHERE username = ? AND deleted = 0;
 
 --# mailbox.getByName
 -- 根据用户ID和邮箱名查找邮箱信息
@@ -74,7 +50,6 @@ DELETE FROM mw_mail_flag WHERE mail_id = ? AND flag IN (%s);
 DELETE FROM mw_mail_flag WHERE flag = '\Recent' AND mail_id IN (SELECT id FROM mw_mail WHERE mailbox_id = ?);
 
 --# mailbox.findEmails.baseQuery
--- 用于 findEmailsBy...Set 的基础查询结构，%s 将被替换为具体的UID或SEQ过滤条件
 SELECT
   m.id, m.uid, m.internal_date,
   msg.raw_content, msg.size_in_bytes,
@@ -83,7 +58,7 @@ FROM mw_mail m
 JOIN mw_mail_message msg ON m.message_id = msg.id
 LEFT JOIN mw_mail_flag mf ON m.id = mf.mail_id
 WHERE m.mailbox_id = ?
-  AND (%s) -- 动态条件占位符
+  AND (%s)
   AND NOT EXISTS (
     SELECT 1 FROM mw_mail_flag del_mf WHERE del_mf.mail_id = m.id AND del_mf.flag = '\Deleted'
   )
@@ -163,6 +138,9 @@ JOIN
   mw_mail_message msg ON m.message_id = msg.id
 WHERE
   m.mailbox_id = ? AND m.deleted = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM mw_mail_flag f WHERE f.mail_id = m.id AND f.flag = '\\Deleted'
+  )
 ORDER BY
   m.uid ASC
 
@@ -200,3 +178,41 @@ FROM (
       AND m.deleted = 0
 ) AS subquery
 WHERE %s;
+
+--# mailbox.getExpungeSeqNums
+-- 获取指定用户、指定邮箱中所有标记为 \Deleted 的邮件原始序号（seq_num）
+WITH ranked_emails AS (
+  SELECT
+    m.id,
+    ROW_NUMBER() OVER (ORDER BY m.uid ASC) AS seq_num
+  FROM mw_mail m
+  JOIN mw_mailbox b ON m.mailbox_id = b.id
+  JOIN mw_user u    ON b.user_id    = u.id
+  WHERE u.username = ?
+    AND b.name     = ?
+    AND m.deleted  = 0
+)
+SELECT r.seq_num
+FROM ranked_emails r
+WHERE EXISTS (
+  SELECT 1
+  FROM mw_mail_flag f
+  WHERE f.mail_id = r.id
+    AND f.flag    = '\\Deleted'
+);
+
+--# mailbox.expunge
+-- 逻辑删除所有已标记 \Deleted 的邮件实例
+UPDATE mw_mail m
+SET deleted = 1
+FROM mw_mailbox b, mw_user u
+WHERE m.mailbox_id = b.id
+  AND b.user_id    = u.id
+  AND u.username   = ?
+  AND b.name       = ?
+  AND EXISTS (
+    SELECT 1
+    FROM mw_mail_flag f
+    WHERE f.mail_id = m.id
+      AND f.flag    = '\\Deleted'
+  );

@@ -3,8 +3,10 @@ package com.tio.mail.wing.listener;
 
 import com.litongjava.aio.Packet;
 import com.litongjava.tio.core.ChannelContext;
+import com.litongjava.tio.core.Tio;
 import com.litongjava.tio.server.intf.ServerAioListener;
 import com.tio.mail.wing.handler.ImapSessionContext;
+import com.tio.mail.wing.packet.ImapPacket;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -17,7 +19,7 @@ public class ImapServerAioListener implements ServerAioListener {
       log.info("IMAP client connected: {}", channelContext.getClientNode());
       channelContext.set("sessionContext", new ImapSessionContext());
       // 发送欢迎消息
-      ImapSessionContext.send(channelContext, "* OK tio-mail-wing IMAP4rev1 server ready");
+      Tio.send(channelContext, new ImapPacket("* OK tio-mail-wing IMAP4rev1 server ready \r\n"));
     }
   }
 

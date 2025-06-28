@@ -1,8 +1,6 @@
 package com.tio.mail.wing.service;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
@@ -21,6 +19,7 @@ import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.template.SqlTemplates;
 import com.litongjava.tio.utils.digest.Sha256Utils;
+import com.litongjava.tio.utils.hutool.StrUtil;
 import com.litongjava.tio.utils.snowflake.SnowflakeIdUtils;
 import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.model.Email;
@@ -215,18 +214,16 @@ public class MailboxService {
   /**
    * [IMAP核心] 获取邮箱的元数据。
    */
-  public Map<String, Object> getMailboxMetadata(String username, String mailboxName) {
+  public Row getMailboxMetadata(String username, String mailboxName) {
     Row user = mwUserService.getUserByUsername(username);
-    if (user == null)
+    if (user == null) {
       return null;
+    }
     Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
-    if (mailbox == null)
+    if (mailbox == null) {
       return null;
-
-    Map<String, Object> meta = new HashMap<>();
-    meta.put("uidNext", mailbox.getLong("uid_next"));
-    meta.put("uidValidity", mailbox.getLong("uid_validity"));
-    return meta;
+    }
+    return mailbox;
   }
 
   /**
@@ -294,12 +291,14 @@ public class MailboxService {
    */
   public void clearRecentFlags(String username, String mailboxName) {
     Row user = mwUserService.getUserByUsername(username);
-    if (user == null)
+    if (user == null) {
       return;
-    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
-    if (mailbox == null)
-      return;
+    }
 
+    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
+    if (mailbox == null) {
+      return;
+    }
     String sql = SqlTemplates.get("mailbox.flags.clearRecent");
     Db.updateBySql(sql, mailbox.getLong("id"));
   }
@@ -507,5 +506,60 @@ public class MailboxService {
     public List<Object> getParams() {
       return params;
     }
+  }
+
+  /**
+   * 获取待 EXPUNGE 的邮件序号列表
+   */
+  public List<Integer> getExpungeSeqNums(String username, String mailboxName) {
+    String sql = SqlTemplates.get("mailbox.getExpungeSeqNums");
+    List<Row> rows = Db.find(sql, username, mailboxName);
+    return rows.stream().map(r -> r.getInt("seq_num")).collect(Collectors.toList());
+  }
+
+  /**
+   * 逻辑删除所有已标记 \Deleted 的邮件实例
+   */
+  public void expunge(String username, String mailboxName) {
+    String sql = SqlTemplates.get("mailbox.expunge");
+    Db.updateBySql(sql, username, mailboxName);
+  }
+
+  /**
+   * 列出指定用户的所有邮箱目录名称
+   */
+  public List<String> listMailboxes(String username) {
+    Row user = mwUserService.getUserByUsername(username);
+    if (user == null) {
+      return new ArrayList<>(0);
+    }
+    Long userId = user.getLong("id");
+    String sql = "SELECT name FROM mw_mailbox WHERE user_id = ? AND deleted = 0";
+    List<Row> rows = Db.find(sql, userId);
+    return rows.stream().map(r -> r.getStr("name")).collect(Collectors.toList());
+  }
+
+  /**
+   * 为指定用户创建一个新的邮箱目录
+   */
+  public void createMailbox(String username, String mailboxName) {
+    if (StrUtil.isBlank(mailboxName)) {
+      throw new IllegalArgumentException("Mailbox name cannot be blank");
+    }
+    Row user = mwUserService.getUserByUsername(username);
+    if (user == null) {
+      throw new IllegalStateException("User not found: " + username);
+    }
+    long mailboxId = SnowflakeIdUtils.id();
+    long userId = user.getLong("id");
+
+    Row newMailbox = Row.by("id", mailboxId).set("user_id", userId).set("name", mailboxName)
+        //
+        .set("uid_validity", mailboxId).set("uid_next", 1).set("creator", "system").set("updater", "system")
+        //
+        .set("tenant_id", user.getLong("tenant_id"));
+
+    Db.save("mw_mailbox", "id", newMailbox);
+    log.info("Created mailbox '{}' (id={}) for user {}", mailboxName, mailboxId, username);
   }
 }
