@@ -73,9 +73,150 @@ jdbc.MaximumPoolSize=2
 
 项目中提供了 `db/schema.sql`，和 `db/truncate.sql`包括建表语句和必要的视图。请根据实际情况在数据库中执行：
 
-```bash
+## 整合到报警系统
+整合到基于tio-boot框架的系统中
+```
+<dependency>
+  <groupId>com.litongjava</groupId>
+  <artifactId>tio-mail-wing</artifactId>
+  <version>1.0.0</version>
+</dependency>
+```
+
+```java
+package com.sejie.admin.config;
+
+import com.litongjava.annotation.AConfiguration;
+import com.litongjava.annotation.Initialization;
+import com.litongjava.tio.boot.server.TioBootServer;
+import com.sejie.admin.statistics.MyHttpResponseStatisticsHandler;
+import com.tio.mail.wing.config.ImapServerConfig;
+import com.tio.mail.wing.config.SmtpServerConfig;
+
+@AConfiguration
+public class TioBootServerConfig {
+
+  @Initialization
+  public void config() {
+    //smpt
+    new SmtpServerConfig().startSmtpServer();
+    //imap
+    new ImapServerConfig().startImapServer();
+  }
+}
 
 ```
+
+创建用户jieti@tio.com 邮箱server_error接受服务端错误,app_error接收客户端错误
+```sql
+WITH new_users AS (
+  INSERT INTO mw_user (id, username, password_hash, creator, updater, tenant_id) VALUES
+  (1004, 'jieti@tio.com', '600000$4JRI3BfykBwVVHwSXuUYmA==$qefBA/+M2pcr9o6p4ycojdHNnLAhTs9+7cmSjp664ww=', 'system', 'system', 1)
+  RETURNING id, username
+),
+mailbox_names (name) AS (
+  -- 步骤2: 定义需要创建的邮箱名称列表
+  VALUES ('inbox'), ('trash'),('server_error'), ('app_error'),('im_error'),('desktop_error')
+),
+mailboxes_to_create AS (
+  -- 步骤3: 生成用户和邮箱名的所有组合，并为每个组合生成唯一的邮箱ID
+  SELECT
+    -- 动态生成邮箱ID (示例策略)
+    (new_users.id * 100 + ROW_NUMBER() OVER (PARTITION BY new_users.id ORDER BY mailbox_names.name)) AS mailbox_id,
+    new_users.id AS user_id,
+    mailbox_names.name AS mailbox_name
+  FROM new_users
+  CROSS JOIN mailbox_names
+)
+-- 步骤4: 插入邮箱数据，并将邮箱自己的ID用作UIDVALIDITY
+INSERT INTO mw_mailbox (id, user_id, name, uid_validity, creator, updater, tenant_id)
+SELECT
+  mailbox_id,
+  user_id,
+  mailbox_name,
+  mailbox_id,
+  'system',
+  'system',
+  1
+FROM mailboxes_to_create;
+
+
+-- =================================================================
+-- 验证插入结果 (可选)
+-- =================================================================
+SELECT
+  u.id AS user_id,
+  u.username,
+  m.id AS mailbox_id,
+  m.name AS mailbox_name,
+  m.uid_validity,
+  m.uid_next
+FROM mw_user u
+JOIN mw_mailbox m ON u.id = m.user_id
+ORDER BY u.id, m.name;
+```
+
+添加ErrorAlarmHandler接收报警信息
+```java
+package com.tio.mail.wing.handler;
+
+import com.litongjava.jfinal.aop.Aop;
+import com.litongjava.tio.boot.http.TioRequestContext;
+import com.litongjava.tio.http.common.HttpRequest;
+import com.litongjava.tio.http.common.HttpResponse;
+import com.tio.mail.wing.model.MailRaw;
+import com.tio.mail.wing.service.MailboxService;
+
+public class ErrorAlarmHandler {
+
+  public HttpResponse send(HttpRequest request) {
+    HttpResponse response = TioRequestContext.getResponse();
+
+    String fromUser = request.getHeader("mail_from_user");
+    String toUser = request.getHeader("mail_to_user");
+    String mailBox = request.getHeader("mail_to_mailbox");
+    if (mailBox == null) {
+      mailBox = "server_error";
+    }
+    String subject = request.getHeader("mail_subject");
+    if (subject == null) {
+      subject = "server_error";
+    }
+
+    String body = request.getBodyString();
+
+    // 使用建造者模式创建一个邮件对象
+    MailRaw mail = MailRaw.builder().from(fromUser).to(toUser).subject(subject).body(body).build();
+
+    MailboxService mailboxService = Aop.get(MailboxService.class);
+    // Act: Save the email to the recipient's inbox
+    boolean success = mailboxService.saveEmail(toUser, mailBox, mail);
+    if (success) {
+      response.setStatus(200);
+    } else {
+      response.setStatus(500);
+    }
+    return response;
+  }
+}
+```
+
+发送测试
+```
+curl --location --request POST 'http://localhost/alarm' \
+--header 'mail_from_user: jieti_china@tio.com' \
+--header 'mail_to_user: jieti@tio.com' \
+--header 'mail_to_mailbox: server_error' \
+--header 'mail_subject: Exception Name 4' \
+--header 'Content-Type: text/plain' \
+--header 'Accept: */*' \
+--header 'Host: localhost' \
+--header 'Connection: keep-alive' \
+--data-raw 'alarm'
+```
+使用客户端拉取报警信息,我使用的客户端Thunderbrid显示信息如下
+
+![alt text](images/image.png)
 
 ## 贡献
 
