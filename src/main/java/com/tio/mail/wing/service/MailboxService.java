@@ -23,7 +23,9 @@ import com.litongjava.tio.utils.hutool.StrUtil;
 import com.litongjava.tio.utils.snowflake.SnowflakeIdUtils;
 import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.model.Email;
+import com.tio.mail.wing.model.MailRaw;
 import com.tio.mail.wing.result.WhereClauseResult;
+import com.tio.mail.wing.utils.MailRawUtils;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -130,11 +132,21 @@ public class MailboxService {
     return uids;
   }
 
+  public boolean saveEmail(String toUser, MailRaw mail) {
+    String rawContent = MailRawUtils.toRawContent(mail);
+    return this.saveEmail(toUser, rawContent);
+  }
+
   /**
    * [兼容SMTP] 将接收到的邮件保存到指定用户的收件箱(INBOX)中。
    */
   public boolean saveEmail(String username, String rawContent) {
     return saveEmailInternal(username, MailBoxName.INBOX, rawContent);
+  }
+
+  public boolean saveEmail(String toUser, String mailBoxName, MailRaw mail) {
+    String rawContent = MailRawUtils.toRawContent(mail);
+    return this.saveEmailInternal(toUser, mailBoxName, rawContent);
   }
 
   /**
@@ -640,4 +652,5 @@ public class MailboxService {
     // 6. 执行
     Db.updateBySql(sql, params.toArray());
   }
+
 }
