@@ -141,6 +141,7 @@ COMMENT on COLUMN mw_mail.internal_date IS '服务器内部接收/投递日期';
 CREATE INDEX idx_mail_user_id ON mw_mail(user_id);
 CREATE INDEX idx_mail_mailbox_id ON mw_mail(mailbox_id);
 CREATE INDEX idx_mail_message_id ON mw_mail(message_id);
+CREATE INDEX idx_mail_mailbox_id_modseq ON mw_mail(mailbox_id, modseq);
 
 -- ----------------------------
 -- 5. 邮件标志表 (mw_mail_flag)

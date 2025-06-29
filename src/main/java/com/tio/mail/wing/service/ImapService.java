@@ -204,6 +204,7 @@ public class ImapService {
     if (meta == null) {
       return tag + " NO SELECT failed: mailbox not found: " + mailbox + "\r\n";
     }
+    long highest_modseq = mailboxService.highest_modseq(mailBoxId);
     List<Email> all = mailboxService.getActiveMessages(mailBoxId);
     mailboxService.clearRecentFlags(username, mailbox);
     long exists = all.size();
@@ -221,16 +222,21 @@ public class ImapService {
     long uv = meta.getLong("uid_next");
     long un = meta.getLong("uid_validity");
     log.info("exists:{},recent:{},uv{},un:{}", exists, recent, uv, un);
+    
     sb.append("* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)").append("\r\n");
     sb.append("* OK [PERMANENTFLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft \\*)] Flags permitted.").append("\r\n");
     sb.append("* ").append(exists).append(" EXISTS").append("\r\n");
     sb.append("* ").append(recent).append(" RECENT").append("\r\n");
     sb.append("* OK [UIDVALIDITY ").append(un).append("] UIDs valid.").append("\r\n");
+    
     sb.append("* OK [UIDNEXT ").append(uv).append("] Predicted next UID.").append("\r\n");
+    //* OK [HIGHESTMODSEQ 2048]
+    sb.append("* OK [HIGHESTMODSEQ ").append(highest_modseq).append("].").append("\r\n");
     sb.append(tag).append(" OK [READ-WRITE] SELECT completed.").append("\r\n");
 
     return sb.toString();
   }
+
 
   public String handleStore(ImapSessionContext session, String tag, String args, boolean isUid) {
     if (session.getState() != ImapSessionContext.State.SELECTED) {

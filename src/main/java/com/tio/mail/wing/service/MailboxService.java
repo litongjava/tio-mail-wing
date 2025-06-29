@@ -158,7 +158,6 @@ public class MailboxService {
     return getActiveMessages(userId, MailBoxName.INBOX);
   }
 
-  
   public List<Email> getActiveMessagesByUserId(Long userId) {
     return getActiveMessages(userId, MailBoxName.INBOX);
   }
@@ -673,6 +672,11 @@ public class MailboxService {
     params.add(destMailboxId);
     // 6. 执行
     Db.updateBySql(sql, params.toArray());
+  }
+
+  public long highest_modseq(long mailboxId) {
+    String sql = "select highest_modseq from mw_mailbox where id=?";
+    return Db.queryLong(sql, mailboxId);
   }
 
 }
