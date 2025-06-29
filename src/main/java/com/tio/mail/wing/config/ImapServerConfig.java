@@ -23,6 +23,7 @@ public class ImapServerConfig {
     serverTioConfig.setHeartbeatTimeout(-1);
     serverTioConfig.checkAttacks = false;
     serverTioConfig.ignoreDecodeFail = true;
+    serverTioConfig.setWorkerThreads(4);
 
     TioServer tioServer = new TioServer(serverTioConfig);
 

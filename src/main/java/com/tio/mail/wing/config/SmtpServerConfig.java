@@ -22,7 +22,8 @@ public class SmtpServerConfig {
     serverTioConfig.ignoreDecodeFail = true;
     serverTioConfig.setServerAioHandler(serverHandler);
     serverTioConfig.setServerAioListener(serverListener);
-    serverTioConfig.setHeartbeatTimeout(-1); // SMTP 不需要应用层心跳
+    serverTioConfig.setHeartbeatTimeout(-1);
+    serverTioConfig.setWorkerThreads(4);
 
     TioServer tioServer = new TioServer(serverTioConfig);
 

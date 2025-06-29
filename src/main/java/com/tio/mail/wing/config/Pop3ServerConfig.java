@@ -28,6 +28,7 @@ public class Pop3ServerConfig {
     serverTioConfig.setServerAioListener(pop3ServerAioListener);
     serverTioConfig.checkAttacks = false;
     serverTioConfig.ignoreDecodeFail = true;
+    serverTioConfig.setWorkerThreads(4);
 
     // 设置心跳,-1 取消心跳
     serverTioConfig.setHeartbeatTimeout(-1);
