@@ -39,6 +39,7 @@ CREATE TABLE mw_mailbox (
   "name" VARCHAR(255) NOT NULL,            -- 邮箱名称 (e.g., INBOX, Sent)
   "uid_validity" BIGINT NOT NULL,          -- IMAP UIDVALIDITY 值，用于客户端同步
   "uid_next" BIGINT NOT NULL DEFAULT 1,    -- IMAP UIDNEXT 值，下一个可用的UID
+  highest_modseq BIGINT NOT NULL DEFAULT 0,
   "remark" VARCHAR(256),
   "creator" VARCHAR(64) DEFAULT '',
   "create_time" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -115,6 +116,7 @@ CREATE TABLE mw_mail (
   "mailbox_id" BIGINT NOT NULL,            -- 所属邮箱ID
   "message_id" BIGINT NOT NULL,            -- 邮件消息ID (关联 mw_mail_message.id)
   "uid" BIGINT NOT NULL,                   -- IMAP UID，在单个邮箱内唯一
+  modseq BIGINT NOT NULL DEFAULT 0,
   "internal_date" TIMESTAMP WITH TIME ZONE NOT NULL, -- 服务器内部接收日期
   "remark" VARCHAR(256),
   "creator" VARCHAR(64) DEFAULT '',
