@@ -5,7 +5,6 @@ import java.util.Base64;
 import java.util.UUID;
 
 import com.litongjava.jfinal.aop.Aop;
-import com.litongjava.tio.http.server.util.SseEmitter;
 import com.tio.mail.wing.handler.SmtpSessionContext;
 
 public class SmtpService {

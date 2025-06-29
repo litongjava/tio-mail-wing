@@ -1,8 +1,5 @@
 package com.tio.mail.wing.handler;
 
-import com.litongjava.tio.core.ChannelContext;
-import com.litongjava.tio.core.Tio;
-import com.tio.mail.wing.packet.ImapPacket;
 import lombok.Getter;
 import lombok.Setter;
 
