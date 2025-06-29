@@ -77,6 +77,7 @@ public class Pop3Service {
   public String handleTransactionState(String command, String[] parts, Pop3SessionContext sessionContext) {
     StringBuilder resp = new StringBuilder();
     String username = sessionContext.getUsername();
+    Long userId = sessionContext.getUserId();
 
     switch (command) {
     case "STAT":
@@ -123,7 +124,7 @@ public class Pop3Service {
       break;
 
     case "LIST":
-      List<Integer> sizes = mailboxService.listMessages(username);
+      List<Integer> sizes = mailboxService.listMessages(userId);
       resp.append("+OK ").append(sizes.size()).append(" messages\r\n");
       for (int i = 0; i < sizes.size(); i++) {
         resp.append(i + 1).append(" ").append(sizes.get(i)).append("\r\n");
@@ -132,7 +133,7 @@ public class Pop3Service {
       break;
 
     case "UIDL":
-      List<Long> uids = mailboxService.listUids(username);
+      List<Long> uids = mailboxService.listUids(userId);
       resp.append("+OK Unique-ID listing follows\r\n");
       for (int i = 0; i < uids.size(); i++) {
         resp.append(i + 1).append(" ").append(uids.get(i)).append("\r\n");

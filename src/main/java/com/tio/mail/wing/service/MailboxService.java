@@ -153,8 +153,14 @@ public class MailboxService {
    * [兼容POP3] 获取用户收件箱(INBOX)中所有未删除的邮件。
    * 注意：此方法现在性能更高，但如果邮箱巨大，仍需考虑分页。
    */
-  public List<Email> getActiveMessages(String username) {
-    return getActiveMessages(username, MailBoxName.INBOX);
+  public List<Email> getActiveMessagesByUsername(String username) {
+    Long userId = mwUserService.getUserIdByUsername(username);
+    return getActiveMessages(userId, MailBoxName.INBOX);
+  }
+
+  
+  public List<Email> getActiveMessagesByUserId(Long userId) {
+    return getActiveMessages(userId, MailBoxName.INBOX);
   }
 
   /**
@@ -196,15 +202,15 @@ public class MailboxService {
   /**
    * [兼容POP3] 获取邮件大小列表，用于 LIST 命令，针对INBOX。
    */
-  public List<Integer> listMessages(String username) {
-    return getActiveMessages(username, MailBoxName.INBOX).stream().map(Email::getSize).collect(Collectors.toList());
+  public List<Integer> listMessages(Long userId) {
+    return getActiveMessages(userId, MailBoxName.INBOX).stream().map(Email::getSize).collect(Collectors.toList());
   }
 
   /**
    * [兼容POP3] 获取邮件的唯一ID列表，用于 UIDL 命令，针对INBOX。
    */
-  public List<Long> listUids(String username) {
-    return getActiveMessages(username, MailBoxName.INBOX).stream().map(Email::getUid).collect(Collectors.toList());
+  public List<Long> listUids(Long userId) {
+    return getActiveMessages(userId, MailBoxName.INBOX).stream().map(Email::getUid).collect(Collectors.toList());
   }
 
   /**
@@ -283,11 +289,8 @@ public class MailboxService {
    * [IMAP核心] 获取用户【指定邮箱】中所有未被标记为删除的邮件。
    * 优化：使用单个SQL查询，将邮件、内容和标志一次性获取。
    */
-  public List<Email> getActiveMessages(String username, String mailboxName) {
-    Row user = mwUserService.getUserByUsername(username);
-    if (user == null)
-      return Collections.emptyList();
-    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
+  public List<Email> getActiveMessages(Long userId, String mailboxName) {
+    Row mailbox = getMailboxByName(userId, mailboxName);
     if (mailbox == null)
       return Collections.emptyList();
 
@@ -297,15 +300,17 @@ public class MailboxService {
     return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
 
+  public List<Email> getActiveMessages(Long mailboxId) {
+    String sql = SqlTemplates.get("mailbox.getActiveMessages");
+    List<Row> mailRows = Db.find(sql, mailboxId);
+    return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
+  }
+
   /**
    * [IMAP核心] 获取邮箱的元数据。
    */
-  public Row getMailboxMetadata(String username, String mailboxName) {
-    Row user = mwUserService.getUserByUsername(username);
-    if (user == null) {
-      return null;
-    }
-    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
+  public Row getMailboxMetadata(Long userId, String mailboxName) {
+    Row mailbox = getMailboxByName(userId, mailboxName);
     if (mailbox == null) {
       return null;
     }
@@ -402,12 +407,15 @@ public class MailboxService {
 
     long mailboxId = mailbox.getLong("id");
 
+    return findEmailsByUidSet(mailboxId, messageSet);
+  }
+
+  public List<Email> findEmailsByUidSet(long mailboxId, String messageSet) {
     // 解析 messageSet 并构建 SQL 条件
     WhereClauseResult whereClause = buildUidWhereClause(messageSet, mailboxId);
     if (whereClause.getClause().isEmpty()) {
       return Collections.emptyList();
     }
-
     // 使用新的带占位符的SQL模板
     String baseSql = SqlTemplates.get("mailbox.findEmails.baseQuery");
     // 将动态生成的WHERE条件填入占位符 %s
@@ -438,8 +446,11 @@ public class MailboxService {
 
     long mailboxId = mailbox.getLong("id");
 
+    return findEmailsBySeqSet(mailboxId, messageSet);
+  }
+
+  public List<Email> findEmailsBySeqSet(long mailboxId, String messageSet) {
     // 解析 messageSet 并构建 SQL 条件
-    // 注意：这里的 helper 方法需要返回针对 sequence_number 的条件
     WhereClauseResult whereClause = buildSeqWhereClause(messageSet, mailboxId);
     if (whereClause.getClause().isEmpty()) {
       return Collections.emptyList();
@@ -458,7 +469,13 @@ public class MailboxService {
   }
 
   private Row getMailboxByName(long userId, String mailboxName) {
-    return Db.findFirst(SqlTemplates.get("mailbox.getByName"), userId, mailboxName);
+    String sql = "SELECT id, uid_validity, uid_next FROM mw_mailbox WHERE user_id = ? AND name = ? AND deleted = 0";
+    return Db.findFirst(sql, userId, mailboxName);
+  }
+
+  public Row getMailboxById(long userId, long mailboxId) {
+    String sql = "SELECT id, uid_validity, uid_next FROM mw_mailbox WHERE user_id = ? AND id = ? AND deleted = 0";
+    return Db.findFirst(sql, userId, mailboxId);
   }
 
   /**
@@ -624,6 +641,11 @@ public class MailboxService {
   public boolean exitsMailBox(Long userId, String mailboxName) {
     String sql = "select count(1) from mw_mailbox where user_id=? and name=?";
     return Db.existsBySql(sql, userId, mailboxName);
+  }
+
+  public Long queryMailBoxId(Long userId, String mailboxName) {
+    String sql = "select id from mw_mailbox where user_id=? and name=?";
+    return Db.queryLong(sql, userId, mailboxName);
   }
 
   public void moveEmailsByUidSet(Long userId, String src, String uidSet, String dest) {

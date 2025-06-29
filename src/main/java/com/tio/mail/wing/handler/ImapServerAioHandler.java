@@ -13,6 +13,7 @@ import com.litongjava.tio.core.exception.TioDecodeException;
 import com.litongjava.tio.core.utils.ByteBufferUtils;
 import com.litongjava.tio.server.intf.ServerAioHandler;
 import com.tio.mail.wing.packet.ImapPacket;
+import com.tio.mail.wing.service.ImapFetchService;
 import com.tio.mail.wing.service.ImapService;
 
 import lombok.extern.slf4j.Slf4j;
@@ -115,7 +116,8 @@ public class ImapServerAioHandler implements ServerAioHandler {
         break;
       case "FETCH":
         // 传递 isUidCommand = false
-        reply = imapService.handleFetch(session, tag, args, false);
+        ImapFetchService imapFetchService = Aop.get(ImapFetchService.class);
+        reply = imapFetchService.handleFetch(session, tag, args, false);
         break;
       case "STORE":
         // 传递 isUidCommand = false

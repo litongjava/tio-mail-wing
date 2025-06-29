@@ -10,10 +10,6 @@ msg.size_in_bytes
 -- 根据用户名查找未删除的用户ID
 SELECT * FROM mw_user WHERE username = ? AND deleted = 0;
 
---# mailbox.getByName
--- 根据用户ID和邮箱名查找邮箱信息
-SELECT id, uid_validity, uid_next FROM mw_mailbox WHERE user_id = ? AND name = ? AND deleted = 0;
-
 --# mailbox.message.findByHash
 -- 根据内容哈希查找已存在的邮件消息
 SELECT id FROM mw_mail_message WHERE content_hash = ?;

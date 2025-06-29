@@ -24,6 +24,7 @@ public class ImapSessionContext {
   private Long userId;
   private String username;
   private String selectedMailbox;
+  private Long selectedMailboxId;
 
   /**
    * 用于暂存 AUTHENTICATE 命令的 tag，以便在多步交互后能正确响应

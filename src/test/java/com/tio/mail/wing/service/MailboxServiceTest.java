@@ -35,7 +35,7 @@ public class MailboxServiceTest {
     System.out.println(success);
 
     // Act: Retrieve active messages for the recipient
-    List<Email> activeMessages = mailboxService.getActiveMessages(toUser);
+    List<Email> activeMessages = mailboxService.getActiveMessagesByUsername(toUser);
     System.out.println(activeMessages);
 
     Email savedEmail = activeMessages.get(0);

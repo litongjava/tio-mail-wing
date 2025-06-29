@@ -1,16 +1,10 @@
 package com.tio.mail.wing.service;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
@@ -19,11 +13,10 @@ import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.handler.ImapSessionContext;
 import com.tio.mail.wing.model.Email;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class ImapService {
-  private static final Pattern BODY_FETCH_PATTERN = Pattern.compile("BODY(?:\\.PEEK)?\\[(.*?)\\]", Pattern.CASE_INSENSITIVE);
-  private static final Pattern UID_FETCH_PATTERN = Pattern.compile("([\\d\\*:,\\-]+)\\s+\\((.*)\\)", Pattern.CASE_INSENSITIVE);
-  public static final String[] EMAIL_HEADER_FIELDS = new String[] { "From", "To", "Cc", "Bcc", "Subject", "Date", "Message-ID", "Priority", "X-Priority", "References", "Newsgroups", "In-Reply-To",
-      "Content-Type", "Reply-To" };
 
   private final MwUserService userService = Aop.get(MwUserService.class);
   private final MailboxService mailboxService = Aop.get(MailboxService.class);
@@ -181,6 +174,7 @@ public class ImapService {
     if (session.getState() == ImapSessionContext.State.SELECTED) {
       mailboxService.expunge(session.getUsername(), session.getSelectedMailbox());
       session.setSelectedMailbox(null);
+      session.setSelectedMailboxId(null);
     }
     StringBuilder sb = new StringBuilder();
     sb.append("* BYE tio-mail-wing IMAP4rev1 server signing off").append("\r\n");
@@ -192,123 +186,49 @@ public class ImapService {
     String mailbox = unquote(args);
     StringBuilder sb = new StringBuilder();
     Long userId = session.getUserId();
-    if (!mailboxService.exitsMailBox(userId, mailbox)) {
+    String username = session.getUsername();
+
+    boolean userExists = userService.userExists(userId);
+    if (!userExists) {
+      return tag + " NO SELECT failed: user not found: " + username + "\r\n";
+    }
+    Long mailBoxId = mailboxService.queryMailBoxId(userId, mailbox);
+    if (mailBoxId == null || mailBoxId < 1) {
       return tag + " NO SELECT failed: mailbox not found: " + mailbox + "\r\n";
     }
     session.setSelectedMailbox(mailbox);
+    session.setSelectedMailboxId(mailBoxId);
     session.setState(ImapSessionContext.State.SELECTED);
 
-    Row meta = mailboxService.getMailboxMetadata(session.getUsername(), mailbox);
+    Row meta = mailboxService.getMailboxById(userId, mailBoxId);
     if (meta == null) {
+      return tag + " NO SELECT failed: mailbox not found: " + mailbox + "\r\n";
+    }
+    List<Email> all = mailboxService.getActiveMessages(mailBoxId);
+    mailboxService.clearRecentFlags(username, mailbox);
+    long exists = all.size();
+    int recent = 0;
+    for (Email e : all) {
+      Set<String> flags = e.getFlags();
+      if (flags.size() > 0) {
+        if (flags.contains("\\Recent")) {
+          recent++;
+        }
+      }
 
     }
-    List<Email> all = mailboxService.getActiveMessages(session.getUsername(), mailbox);
-    long exists = all.size();
-    long recent = all.stream().filter(e -> e.getFlags().contains("\\Recent")).count();
+
     long uv = meta.getLong("uid_next");
     long un = meta.getLong("uid_validity");
-
+    log.info("exists:{},recent:{},uv{},un:{}", exists, recent, uv, un);
     sb.append("* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)").append("\r\n");
     sb.append("* OK [PERMANENTFLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft \\*)] Flags permitted.").append("\r\n");
     sb.append("* ").append(exists).append(" EXISTS").append("\r\n");
     sb.append("* ").append(recent).append(" RECENT").append("\r\n");
-    sb.append("* OK [UIDVALIDITY ").append(uv).append("] UIDs valid.").append("\r\n");
-    sb.append("* OK [UIDNEXT ").append(un).append("] Predicted next UID.").append("\r\n");
+    sb.append("* OK [UIDVALIDITY ").append(un).append("] UIDs valid.").append("\r\n");
+    sb.append("* OK [UIDNEXT ").append(uv).append("] Predicted next UID.").append("\r\n");
     sb.append(tag).append(" OK [READ-WRITE] SELECT completed.").append("\r\n");
-    return sb.toString();
-  }
 
-  public String handleFetch(ImapSessionContext session, String tag, String args, boolean isUid) {
-    if (session.getState() != ImapSessionContext.State.SELECTED) {
-      return tag + " NO FETCH failed: No mailbox selected\r\n";
-    }
-    Matcher m = UID_FETCH_PATTERN.matcher(args);
-    if (!m.find()) {
-      return tag + " BAD Invalid FETCH arguments: " + args + "\r\n";
-    }
-
-    String user = session.getUsername();
-    String box = session.getSelectedMailbox();
-    String set = m.group(1);
-    String items = m.group(2).toUpperCase();
-
-    List<Email> toFetch = null;
-    if (isUid) {
-      toFetch = mailboxService.findEmailsByUidSet(user, box, set);
-    } else {
-      toFetch = mailboxService.findEmailsBySeqSet(user, box, set);
-    }
-
-    StringBuilder sb = new StringBuilder();
-    if (toFetch == null || toFetch.isEmpty()) {
-      sb.append(tag).append(" OK FETCH completed.\r\n");
-      return sb.toString();
-    }
-
-    List<Email> all = mailboxService.getActiveMessages(user, box);
-    for (Email e : toFetch) {
-      int seq = all.indexOf(e) + 1;
-      if (seq <= 0)
-        continue;
-
-      // 先把整封 raw byte[] 读出来，用于大小计算
-      String rawContent = e.getRawContent();
-      byte[] raw = rawContent.getBytes(StandardCharsets.UTF_8);
-      int fullSize = raw.length;
-
-      // 按 固定顺序 UID → RFC822.SIZE → FLAGS 构造 parts 列表
-      List<String> parts = new ArrayList<>();
-      if (isUid || items.contains("UID")) {
-        parts.add("UID " + e.getUid());
-      }
-      if (items.contains("RFC822.SIZE")) {
-        parts.add("RFC822.SIZE " + fullSize);
-      }
-      if (items.contains("FLAGS")) {
-        Set<String> flags = e.getFlags();
-        if (flags != null) {
-          parts.add("FLAGS (" + String.join(" ", flags) + ")");
-        } else {
-          parts.add("FLAGS ()");
-        }
-      }
-
-      String prefix = "* " + seq + " FETCH (" + String.join(" ", parts);
-
-      // BODY.PEEK[]（全文）
-      if (items.contains("BODY.PEEK[]")) {
-        sb.append(prefix);
-        sb.append(" BODY[] {").append(fullSize).append("}\r\n");
-        sb.append(rawContent);
-        sb.append("\r\n)\r\n");
-        continue;
-      }else if(items.contains("BODY[]")) {
-        mailboxService.storeFlags(e, Collections.singleton("\\Seen"), true);
-        sb.append(prefix);
-        sb.append(" BODY[] {").append(fullSize).append("}\r\n");
-        sb.append(rawContent);
-        sb.append("\r\n)\r\n");
-      }
-
-      // BODY.PEEK[HEADER.FIELDS ...]
-      Matcher b = BODY_FETCH_PATTERN.matcher(items);
-
-      if (b.find()) {
-        String partToken = b.group(0);
-        partToken = partToken.replace("BODY.PEEK", "BODY");
-        String hdr = parseHeaderFields(rawContent, EMAIL_HEADER_FIELDS);
-        byte[] hdrBytes = hdr.getBytes(StandardCharsets.UTF_8);
-        sb.append(prefix).append(" ").append(partToken);
-        sb.append(" {").append(hdrBytes.length).append("}\r\n");
-        sb.append(hdr);
-        sb.append(hdr).append("\r\n)\r\n");
-      } else {
-        sb.append(prefix).append(")\r\n");
-      }
-    }
-
-    sb.append(tag).append(" OK FETCH completed.\r\n");
-    mailboxService.clearRecentFlags(user, box);
     return sb.toString();
   }
 
@@ -325,16 +245,22 @@ public class ImapService {
     String flagsStr = p[2].replaceAll("[()]", "");
     boolean add = op.startsWith("+");
     Set<String> flags = new HashSet<>(Arrays.asList(flagsStr.split("\\s+")));
-    String user = session.getUsername();
-    String box = session.getSelectedMailbox();
-    List<Email> all = mailboxService.getActiveMessages(user, box);
-    List<Email> toUpd = isUid ? mailboxService.findEmailsByUidSet(user, box, set) : mailboxService.findEmailsBySeqSet(user, box, set);
+
+    Long selectedMailboxId = session.getSelectedMailboxId();
+
+    List<Email> toUpd = null;
+    if (isUid) {
+      toUpd = mailboxService.findEmailsByUidSet(selectedMailboxId, set);
+    } else {
+      toUpd = mailboxService.findEmailsBySeqSet(selectedMailboxId, set);
+    }
+
     StringBuilder sb = new StringBuilder();
     for (Email e : toUpd) {
       mailboxService.storeFlags(e, flags, add);
       if (!op.contains(".SILENT")) {
         String f = String.join(" ", e.getFlags());
-        int seq = all.indexOf(e) + 1;
+        int seq = toUpd.indexOf(e) + 1;
         sb.append("* ").append(seq).append(" FETCH (FLAGS (" + f + ") UID " + e.getUid() + ")").append("\r\n");
       }
     }
@@ -351,7 +277,8 @@ public class ImapService {
     String sub = parts.length > 1 ? parts[1] : "";
     switch (cmd) {
     case "FETCH":
-      return handleFetch(session, tag, sub, true);
+      ImapFetchService imapFetchService = Aop.get(ImapFetchService.class);
+      return imapFetchService.handleFetch(session, tag, sub, true);
     case "STORE":
       return handleStore(session, tag, sub, true);
     case "COPY":
@@ -409,30 +336,6 @@ public class ImapService {
     }
   }
 
-  public String parseHeaderFields(String content, String[] fields) {
-    Map<String, String> hdr = new HashMap<>();
-    for (String line : content.split("\\r?\\n")) {
-      if (line.isEmpty()) {
-        break;
-      }
-
-      int i = line.indexOf(":");
-      if (i > 0) {
-        hdr.put(line.substring(0, i).toUpperCase(), line.substring(i + 1).trim());
-      }
-    }
-
-    StringBuilder sb = new StringBuilder();
-    for (String f : fields) {
-      String v = hdr.get(f.toUpperCase());
-      if (v != null) {
-        sb.append(f).append(": ").append(v).append("\r\n");
-      }
-
-    }
-    return sb.toString();
-  }
-
   /**
   * CLOSE: 关闭当前 mailbox，并对所有 \Deleted 标记的邮件做 EXPUNGE
   */
@@ -456,6 +359,7 @@ public class ImapService {
 
     // 3) 取消 selected state
     session.setSelectedMailbox(null);
+    session.setSelectedMailboxId(null);
     session.setState(ImapSessionContext.State.AUTHENTICATED);
 
     // 4) 返回 OK
