@@ -3,6 +3,7 @@ package com.tio.mail.wing.service;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -14,6 +15,7 @@ import java.util.regex.Pattern;
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.tio.utils.base64.Base64Utils;
+import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.handler.ImapSessionContext;
 import com.tio.mail.wing.model.Email;
 
@@ -64,7 +66,12 @@ public class ImapService {
     List<String> mailboxes = mailboxService.listMailboxes(username);
     StringBuilder sb = new StringBuilder();
     for (String m : mailboxes) {
-      sb.append("* LIST (\\HasNoChildren) \"/\" ").append(m).append("\r\n");
+      if (m.equalsIgnoreCase(MailBoxName.TRASH)) {
+        sb.append("* LIST (\\HasNoChildren) \"/\" ").append("Trash").append("\r\n");
+      } else {
+        sb.append("* LIST (\\HasNoChildren) \"/\" ").append(m).append("\r\n");
+      }
+
     }
     sb.append(tag).append(" OK LIST completed.").append("\r\n");
     return sb.toString();
@@ -120,7 +127,7 @@ public class ImapService {
         session.setState(ImapSessionContext.State.AUTH_WAIT_PASSWORD);
         String chal = Base64Utils.encodeToString("Password:".getBytes(StandardCharsets.UTF_8));
         sb.append("+ ").append(chal).append("\r\n");
-      
+
       } else if (session.getState() == ImapSessionContext.State.AUTH_WAIT_PASSWORD) {
         String user, pass;
         if (decoded.contains("\0")) {
@@ -132,7 +139,7 @@ public class ImapService {
           pass = decoded;
         }
         Long userId = userService.authenticate(user, pass);
-        if (userId!=null) {
+        if (userId != null) {
           session.setUsername(user);
           session.setUserId(userId);
           session.setState(ImapSessionContext.State.AUTHENTICATED);
@@ -159,7 +166,7 @@ public class ImapService {
     String user = unquote(parts[0]);
     String pass = unquote(parts[1]);
     Long userId = userService.authenticate(user, pass);
-    if (userId!=null) {
+    if (userId != null) {
       session.setUsername(user);
       session.setUserId(userId);
 
@@ -170,7 +177,11 @@ public class ImapService {
     }
   }
 
-  public String handleLogout(String tag) {
+  public String handleLogout(ImapSessionContext session, String tag) {
+    if (session.getState() == ImapSessionContext.State.SELECTED) {
+      mailboxService.expunge(session.getUsername(), session.getSelectedMailbox());
+      session.setSelectedMailbox(null);
+    }
     StringBuilder sb = new StringBuilder();
     sb.append("* BYE tio-mail-wing IMAP4rev1 server signing off").append("\r\n");
     sb.append(tag).append(" OK LOGOUT").append("\r\n");
@@ -180,7 +191,7 @@ public class ImapService {
   public String handleSelect(ImapSessionContext session, String tag, String args) {
     String mailbox = unquote(args);
     StringBuilder sb = new StringBuilder();
-    Long userId=session.getUserId();
+    Long userId = session.getUserId();
     if (!mailboxService.exitsMailBox(userId, mailbox)) {
       return tag + " NO SELECT failed: mailbox not found: " + mailbox + "\r\n";
     }
@@ -265,12 +276,18 @@ public class ImapService {
       String prefix = "* " + seq + " FETCH (" + String.join(" ", parts);
 
       // BODY.PEEK[]（全文）
-      if (items.contains("BODY.PEEK[]") || items.contains("BODY[]")) {
+      if (items.contains("BODY.PEEK[]")) {
         sb.append(prefix);
         sb.append(" BODY[] {").append(fullSize).append("}\r\n");
         sb.append(rawContent);
         sb.append("\r\n)\r\n");
         continue;
+      }else if(items.contains("BODY[]")) {
+        mailboxService.storeFlags(e, Collections.singleton("\\Seen"), true);
+        sb.append(prefix);
+        sb.append(" BODY[] {").append(fullSize).append("}\r\n");
+        sb.append(rawContent);
+        sb.append("\r\n)\r\n");
       }
 
       // BODY.PEEK[HEADER.FIELDS ...]
@@ -360,9 +377,10 @@ public class ImapService {
     String set = p[0];
     String destMailbox = unquote(p[1]);
     String user = session.getUsername();
+    Long userId = session.getUserId();
     String srcMailbox = session.getSelectedMailbox();
     try {
-      mailboxService.moveEmailsByUidSet(user, srcMailbox, set, destMailbox);
+      mailboxService.moveEmailsByUidSet(userId, srcMailbox, set, destMailbox);
       return tag + " OK MOVE completed.\r\n";
     } catch (Exception e) {
       return tag + " NO MOVE failed: " + e.getMessage() + "\r\n";
@@ -416,6 +434,36 @@ public class ImapService {
     return sb.toString();
   }
 
+  /**
+  * CLOSE: 关闭当前 mailbox，并对所有 \Deleted 标记的邮件做 EXPUNGE
+  */
+  public String handleClose(ImapSessionContext session, String tag) {
+    if (session.getState() != ImapSessionContext.State.SELECTED) {
+      return tag + " BAD CLOSE failed: No mailbox selected\r\n";
+    }
+
+    String user = session.getUsername();
+    String box = session.getSelectedMailbox();
+
+    // 1) 找出待 expunge 的 seq nums，发出 untagged EXPUNGE
+    List<Integer> seqs = mailboxService.getExpungeSeqNums(user, box);
+    StringBuilder sb = new StringBuilder();
+    for (int seq : seqs) {
+      sb.append("* ").append(seq).append(" EXPUNGE").append("\r\n");
+    }
+
+    // 2) 真正逻辑删除
+    mailboxService.expunge(user, box);
+
+    // 3) 取消 selected state
+    session.setSelectedMailbox(null);
+    session.setState(ImapSessionContext.State.AUTHENTICATED);
+
+    // 4) 返回 OK
+    sb.append(tag).append(" OK CLOSE completed").append("\r\n");
+    return sb.toString();
+  }
+
   public String unquote(String s) {
     if (s != null) {
       if (s.startsWith("\"") && s.endsWith("\"")) {
@@ -427,4 +475,5 @@ public class ImapService {
     }
     return s;
   }
+
 }

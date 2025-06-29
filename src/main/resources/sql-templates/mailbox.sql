@@ -215,3 +215,25 @@ WHERE m.mailbox_id = b.id
     WHERE f.mail_id = m.id
       AND f.flag    = '\\Deleted'
   );
+
+
+--# mailbox.moveEmails
+WITH newuids AS (
+  UPDATE mw_mailbox mb
+     SET uid_next = uid_next + ?
+   WHERE mb.id = ?
+ RETURNING mb.uid_next - ? AS start_uid
+),
+moved AS (
+  SELECT id, ROW_NUMBER() OVER (ORDER BY uid) - 1 AS idx
+    FROM mw_mail
+   WHERE mailbox_id = ?
+     AND uid IN (%s)
+)
+UPDATE mw_mail m
+   SET mailbox_id = ?,
+       uid        = nu.start_uid + mv.idx
+  FROM moved mv
+  CROSS JOIN newuids nu
+ WHERE m.id = mv.id
+RETURNING mv.idx, m.id, m.uid;  

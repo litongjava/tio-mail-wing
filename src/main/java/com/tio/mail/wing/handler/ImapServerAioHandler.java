@@ -90,12 +90,14 @@ public class ImapServerAioHandler implements ServerAioHandler {
         reply = imapService.handleLogin(session, tag, args);
         break;
       case "LOGOUT":
-        reply = imapService.handleLogout(tag);
+        reply = imapService.handleLogout(session, tag);
         if (reply != null) {
           Tio.send(ctx, new ImapPacket(reply));
         }
         Tio.close(ctx, "logout");
         return;
+      case "CLOSE":
+        reply = imapService.handleClose(session, tag);
       case "LIST":
         reply = imapService.handleList(session, tag, args);
         break;
@@ -136,7 +138,7 @@ public class ImapServerAioHandler implements ServerAioHandler {
         ActiveRecordException ae = (ActiveRecordException) e;
         log.error("Error handling IMAP command:{},{},{}", line, ae.getSql(), ae.getParas(), e);
       } else {
-        log.error("Error handling IMAP command: " + line);
+        log.error("Error handling IMAP command: " + line, e);
       }
     }
 

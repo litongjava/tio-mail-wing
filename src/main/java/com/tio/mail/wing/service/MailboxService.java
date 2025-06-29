@@ -32,30 +32,102 @@ public class MailboxService {
 
   private MwUserService mwUserService = Aop.get(MwUserService.class);
 
+  /**
+   * 单独的 * → 匹配所有序号
+     n:* → 序号 ≥ n
+     *:n → 序号 ≤ n
+     n:m → 正常范围
+     *:* → 匹配所有
+   * @param messageSet
+   * @param mailboxId
+   * @return
+   */
   private WhereClauseResult buildSeqWhereClause(String messageSet, long mailboxId) {
     StringBuilder clause = new StringBuilder();
     List<Object> params = new ArrayList<>();
 
     String[] parts = messageSet.split(",");
-    for (String part : parts) {
-      part = part.trim();
-      if (clause.length() > 0)
+    for (String rawPart : parts) {
+      String part = rawPart.trim();
+      if (clause.length() > 0) {
         clause.append(" OR ");
+      }
 
       if (part.contains(":")) {
         String[] range = part.split(":", 2);
-        // Assuming '*' is replaced with max sequence number before calling this method
-        int start = Integer.parseInt(range[0]);
-        int end = Integer.parseInt(range[1]);
-        clause.append("seq_num BETWEEN ? AND ?");
-        params.add(Math.min(start, end));
-        params.add(Math.max(start, end));
+        String startStr = range[0].trim();
+        String endStr = range[1].trim();
+        boolean startIsStar = "*".equals(startStr);
+        boolean endIsStar = "*".equals(endStr);
+
+        if (startIsStar && endIsStar) {
+          // *:* → 全部
+          clause.append("TRUE");
+        } else if (startIsStar) {
+          // *:n → seq_num <= n
+          int end = Integer.parseInt(endStr);
+          clause.append("seq_num <= ?");
+          params.add(end);
+        } else if (endIsStar) {
+          // n:* → seq_num >= n
+          int start = Integer.parseInt(startStr);
+          clause.append("seq_num >= ?");
+          params.add(start);
+        } else {
+          // n:m → BETWEEN
+          int start = Integer.parseInt(startStr);
+          int end = Integer.parseInt(endStr);
+          clause.append("seq_num BETWEEN ? AND ?");
+          params.add(Math.min(start, end));
+          params.add(Math.max(start, end));
+        }
       } else {
-        clause.append("seq_num = ?");
-        params.add(Integer.parseInt(part));
+        if ("*".equals(part)) {
+          // 单独的 * → 全部
+          clause.append("TRUE");
+        } else {
+          // 单个序号
+          clause.append("seq_num = ?");
+          params.add(Integer.parseInt(part));
+        }
       }
     }
+
     return new WhereClauseResult(clause.toString(), params);
+  }
+
+  /**
+   * 将 IMAP UID 集合字符串（如 "1,2,5:7"）解析为具体的 UID 列表。
+   * 支持单个 UID、逗号分隔的多段、数字范围，以及 "*" 通配符（代表最大 UID）。
+   *
+   * @param uidSet      IMAP UID set，比如 "1,2,5:7,*"
+   * @param mailboxId   用于查询最大 UID（处理 '*' 通配符）
+   * @return            按顺序展开的 UID 列表
+   */
+  public List<Long> parseUidSet(String uidSet, long mailboxId) {
+    // 拿到当前 mailbox 的最大 UID，用于 '*' 扩展
+    long maxUid = getMaxUid(mailboxId);
+    List<Long> uids = new ArrayList<>();
+    String[] parts = uidSet.split(",");
+    for (String raw : parts) {
+      String part = raw.trim();
+      if (part.contains(":")) {
+        String[] range = part.split(":", 2);
+        long start = "*".equals(range[0]) ? maxUid : Long.parseLong(range[0]);
+        long end = "*".equals(range[1]) ? maxUid : Long.parseLong(range[1]);
+        long min = Math.min(start, end), max = Math.max(start, end);
+        for (long uid = min; uid <= max; uid++) {
+          uids.add(uid);
+        }
+      } else if ("*".equals(part)) {
+        // 单独的 '*' → 取最大那条
+        uids.add(maxUid);
+      } else {
+        // 单个数字
+        uids.add(Long.parseLong(part));
+      }
+    }
+    return uids;
   }
 
   /**
@@ -540,23 +612,32 @@ public class MailboxService {
   public boolean exitsMailBox(Long userId, String mailboxName) {
     String sql = "select count(1) from mw_mailbox where user_id=? and name=?";
     return Db.existsBySql(sql, userId, mailboxName);
-
   }
 
-  /**
-   * IMAP MOVE: 按 UID set 把邮件移到目标 mailbox
-   * 等价于：COPY → 标记 \Deleted → EXPUNGE
-   */
-  public void moveEmailsByUidSet(String username, String srcMailbox, String uidSet, String destMailbox) {
-    // 1. 先复制
-    copyEmailsByUidSet(username, srcMailbox, uidSet, destMailbox);
-    // 2. 标记为 Deleted
-    List<Email> originals = findEmailsByUidSet(username, srcMailbox, uidSet);
-    for (Email e : originals) {
-      // 给每封原邮件打上 \Deleted
-      storeFlags(e, Collections.singleton("\\Deleted"), true);
-    }
-    // 3. 清理所有标记过 Deleted 的邮件
-    expunge(username, srcMailbox);
+  public void moveEmailsByUidSet(Long userId, String src, String uidSet, String dest) {
+    long srcMailboxId = getMailboxByName(userId, src).getLong("id");
+    long destMailboxId = getMailboxByName(userId, dest).getLong("id");
+
+    // 1. 解析 UID set
+    List<Long> uids = parseUidSet(uidSet, srcMailboxId); // 比如 [42L, 43L, 44L]
+    // 2. 计算要 bump 的数量
+    int cnt = uids.size();
+    // 3. 准备 IN 占位符
+
+    String inClause = uids.stream().map(u -> "?").collect(Collectors.joining(","));
+
+    // 4. 从模板中取出 SQL，然后替换占位注释
+    String raw = SqlTemplates.get("mailbox.moveEmails");
+    String sql = String.format(raw, inClause);
+    // 5. 按顺序组装参数：cnt, destMailboxId, srcMailboxId, 然后是每个 uid
+    List<Object> params = new ArrayList<>();
+    params.add(cnt);
+    params.add(destMailboxId);
+    params.add(cnt);
+    params.add(srcMailboxId);
+    params.addAll(uids);
+    params.add(destMailboxId);
+    // 6. 执行
+    Db.updateBySql(sql, params.toArray());
   }
 }
