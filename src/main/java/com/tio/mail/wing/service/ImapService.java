@@ -376,7 +376,6 @@ public class ImapService {
     }
     String set = p[0];
     String destMailbox = unquote(p[1]);
-    String user = session.getUsername();
     Long userId = session.getUserId();
     String srcMailbox = session.getSelectedMailbox();
     try {

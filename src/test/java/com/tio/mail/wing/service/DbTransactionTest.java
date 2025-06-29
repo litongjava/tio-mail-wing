@@ -27,7 +27,7 @@ public class DbTransactionTest {
       oldAutoCommit = conn.getAutoCommit();
       conn.setAutoCommit(false);
 
-      // 3. 在同一个 conn 上执行多个操作
+      // 3. 在同一个 conn 上执行多个操作 
       int count = db.update(config, conn, "UPDATE account SET balance = balance - ? WHERE id = ?", 100, fromAccountId);
       boolean ok = db.save(config, conn, "INSERT INTO account_log(account_id, change_amt) VALUES(?, ?)", fromAccountId, -100);
 

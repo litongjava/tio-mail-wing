@@ -1,4 +1,3 @@
-// src/main/java/com/tio/mail/wing/listener/ImapServerAioListener.java
 package com.tio.mail.wing.listener;
 
 import com.litongjava.aio.Packet;
