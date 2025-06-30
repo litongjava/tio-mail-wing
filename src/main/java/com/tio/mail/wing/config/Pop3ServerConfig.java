@@ -3,6 +3,7 @@ package com.tio.mail.wing.config;
 import java.io.IOException;
 
 import com.litongjava.annotation.Initialization;
+import com.litongjava.hook.HookCan;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.tio.server.ServerTioConfig;
 import com.litongjava.tio.server.TioServer;
@@ -40,6 +41,7 @@ public class Pop3ServerConfig {
     try {
       int port = EnvUtils.getInt("mail.server.pop3.port", 110);
       tioServer.start(null, port);
+      HookCan.me().addDestroyMethod(tioServer::stop);
       log.info("Started POP3 server on port: {}", port);
     } catch (IOException e) {
       log.error("Failed to start POP3 server", e);

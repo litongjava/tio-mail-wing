@@ -2,6 +2,7 @@ package com.tio.mail.wing.config;
 
 import java.io.IOException;
 
+import com.litongjava.hook.HookCan;
 import com.litongjava.tio.server.ServerTioConfig;
 import com.litongjava.tio.server.TioServer;
 import com.litongjava.tio.utils.environment.EnvUtils;
@@ -30,9 +31,12 @@ public class SmtpServerConfig {
     try {
       int port = EnvUtils.getInt("mail.server.smtp.port", 25);
       tioServer.start(null, port);
+      HookCan.me().addDestroyMethod(tioServer::stop);
       log.info("Started SMTP server on port: {}", port);
     } catch (IOException e) {
       log.error("Failed to start SMTP server", e);
     }
+    
+    
   }
 }

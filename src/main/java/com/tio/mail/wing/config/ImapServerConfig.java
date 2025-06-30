@@ -2,6 +2,7 @@ package com.tio.mail.wing.config;
 
 import java.io.IOException;
 
+import com.litongjava.hook.HookCan;
 import com.litongjava.tio.server.ServerTioConfig;
 import com.litongjava.tio.server.TioServer;
 import com.litongjava.tio.utils.environment.EnvUtils;
@@ -29,6 +30,7 @@ public class ImapServerConfig {
     try {
       int port = EnvUtils.getInt("mail.server.imap.port", 143);
       tioServer.start(null, port);
+      HookCan.me().addDestroyMethod(tioServer::stop);
       log.info("Started IMAP server on port: {}", port);
     } catch (IOException e) {
       log.error("Failed to start IMAP server", e);
