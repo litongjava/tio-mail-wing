@@ -1,12 +1,10 @@
 package com.tio.mail.wing.service;
 
-import com.litongjava.annotation.AService;
 import com.litongjava.db.activerecord.Db;
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.template.SqlTemplates;
 import com.litongjava.tio.utils.digest.Sha256Utils;
 
-@AService
 public class MwUserService {
   /**
    * 认证用户

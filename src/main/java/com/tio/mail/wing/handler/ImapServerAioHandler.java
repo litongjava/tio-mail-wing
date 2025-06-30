@@ -149,7 +149,6 @@ public class ImapServerAioHandler implements ServerAioHandler {
     }
 
     if (reply != null) {
-      log.info(reply);
       Tio.bSend(ctx, new ImapPacket(reply));
     }
   }
