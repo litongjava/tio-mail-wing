@@ -1,9 +1,7 @@
 package com.tio.mail.wing.service;
 
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -26,6 +24,7 @@ public class MailService {
   private MwUserService mwUserService = Aop.get(MwUserService.class);
   private MailBoxService mailBoxService = Aop.get(MailBoxService.class);
   private MailSaveService mailSaveService = Aop.get(MailSaveService.class);
+  private MailFlagService mailFlagService = Aop.get(MailFlagService.class);
 
   /**
    * 单独的 * → 匹配所有序号
@@ -203,20 +202,17 @@ public class MailService {
     String sql = SqlTemplates.get("mailbox.getActiveMessages");
     List<Row> mailRows = Db.find(sql, mailbox.getLong("id"));
 
-    return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
+    
+    return mailRows.stream().map(mailFlagService::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
 
   public List<Email> getActiveMessages(Long mailboxId) {
     String sql = SqlTemplates.get("mailbox.getActiveMessages");
     List<Row> mailRows = Db.find(sql, mailboxId);
-    return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
+    return mailRows.stream().map(mailFlagService::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
 
-  public List<Email> getActiveMailFlags(Long mailboxId) {
-    String sql = SqlTemplates.get("mailbox.getActiveMailFlags");
-    List<Row> mailRows = Db.find(sql, mailboxId);
-    return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
-  }
+
 
   /**
    * [IMAP核心] 获取邮箱的元数据。
@@ -255,7 +251,7 @@ public class MailService {
     if (row == null)
       return null;
 
-    return rowToEmailWithAggregatedFlags(row);
+    return mailFlagService.rowToEmailWithAggregatedFlags(row);
   }
 
   /**
@@ -344,7 +340,7 @@ public class MailService {
     params.addAll(whereClause.getParams()); // 这是动态条件中的参数
 
     List<Row> mailRows = Db.find(finalSql, params.toArray());
-    return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
+    return mailRows.stream().map(mailFlagService::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
 
   /**
@@ -383,43 +379,9 @@ public class MailService {
     params.addAll(whereClause.getParams()); // 这是外部WHERE条件的参数
 
     List<Row> mailRows = Db.find(finalSql, params.toArray());
-    return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
+    return mailRows.stream().map(mailFlagService::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
 
-  /**
-  * 将数据库行（包含聚合后的标志数组）转换为 Email DTO 对象。
-  */
-  private Email rowToEmailWithAggregatedFlags(Row row) {
-    Email email = new Email();
-    email.setId(row.getLong("id"));
-    email.setUid(row.getLong("uid"));
-    email.setRawContent(row.getStr("raw_content"));
-    Integer sizeInBytes = row.getInt("size_in_bytes");
-    if (sizeInBytes != null) {
-      email.setSize(sizeInBytes);
-    }
-
-    // 新增：设置序列号
-    if (row.get("sequence_number") != null) {
-      email.setSequenceNumber(row.getInt("sequence_number"));
-    }
-
-    OffsetDateTime internalDate = row.getOffsetDateTime("internal_date");
-    if (internalDate != null) {
-      email.setInternalDate(internalDate);
-    }
-    String[] flagsArray = row.getStringArray("flags");
-
-    if (flagsArray != null) {
-      Set<String> flags = new HashSet<>(flagsArray.length);
-      for (String string : flagsArray) {
-        flags.add(string);
-      }
-      email.setFlags(flags);
-    }
-
-    return email;
-  }
 
   private WhereClauseResult buildUidWhereClause(String messageSet, long mailboxId) {
     StringBuilder clause = new StringBuilder();

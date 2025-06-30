@@ -201,6 +201,13 @@ public class ErrorAlarmHandler {
 }
 ```
 
+```java
+    HttpRequestRouter r = TioBootServer.me().getRequestRouter();
+    if (r != null) {
+      ErrorAlarmHandler errorAlarmHandler = new ErrorAlarmHandler();
+      r.add("/alarm", errorAlarmHandler::send);
+    }
+```
 发送测试
 ```
 curl --location --request POST 'http://localhost/alarm' \

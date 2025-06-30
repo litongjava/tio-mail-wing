@@ -21,9 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class MailSaveService {
-  private MailService mailService = Aop.get(MailService.class);
   private MwUserService mwUserService = Aop.get(MwUserService.class);
   private MailBoxService mailBoxService = Aop.get(MailBoxService.class);
+  MailFlagService mailFlagService = Aop.get(MailFlagService.class);
   
   public boolean saveEmail(String toUser, MailRaw mail) {
     
@@ -84,7 +84,7 @@ public class MailSaveService {
       }
       Set<ChannelContext> ctxs = channelContexts.getObj();
       if (ctxs != null && ctxs.size() > 0) {
-        List<Email> all = mailService.getActiveMailFlags(mailboxId);
+        List<Email> all = mailFlagService.getActiveMailFlags(mailboxId);
         long exists = all.size();
         int recent = 0;
         for (Email e : all) {
