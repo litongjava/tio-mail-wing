@@ -267,7 +267,7 @@ public class ImapService {
     String op = p[1];
     String flagsStr = p[2].replaceAll("[()]", "");
     boolean add = op.startsWith("+");
-    Set<String> flags = new HashSet<>(Arrays.asList(flagsStr.split("\\s+")));
+    Set<String> addFlags = new HashSet<>(Arrays.asList(flagsStr.split("\\s+")));
 
     Long selectedMailboxId = session.getSelectedMailboxId();
 
@@ -280,9 +280,11 @@ public class ImapService {
 
     StringBuilder sb = new StringBuilder();
     for (Email e : toUpd) {
-      mailboxService.storeFlags(e, flags, add);
+      mailboxService.storeFlags(e.getId(), addFlags, add);
       if (!op.contains(".SILENT")) {
-        String f = String.join(" ", e.getFlags());
+        Set<String> flags = e.getFlags();
+        flags.addAll(addFlags);
+        String f = String.join(" ", flags);
         int seq = toUpd.indexOf(e) + 1;
         sb.append("* ").append(seq).append(" FETCH (FLAGS (" + f + ") UID " + e.getUid() + ")").append("\r\n");
       }

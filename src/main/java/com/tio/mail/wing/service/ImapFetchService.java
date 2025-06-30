@@ -141,7 +141,7 @@ public class ImapFetchService {
 
       String prefix = prefixLine(seq, isUid, items, fullSize, e);
 
-      mailboxService.storeFlags(e, Collections.singleton("\\Seen"), true);
+      mailboxService.storeFlags(e.getId(), Collections.singleton("\\Seen"), true);
       sb.append(prefix);
       sb.append(" BODY[] {").append(fullSize).append("}\r\n");
       sb.append(rawContent);

@@ -350,11 +350,7 @@ public class MailboxService {
    * [IMAP核心] 修改邮件标志。
    * 优化：使用批量、原子的SQL操作。
    */
-  public void storeFlags(Email email, Set<String> newFlags, boolean add) {
-    if (email == null || email.getId() == null || newFlags == null || newFlags.isEmpty()) {
-      return;
-    }
-    long mailId = email.getId();
+  public void storeFlags(Long mailId, Set<String> newFlags, boolean add) {
 
     if (add) {
       String sql = SqlTemplates.get("mailbox.flags.addBatch");
