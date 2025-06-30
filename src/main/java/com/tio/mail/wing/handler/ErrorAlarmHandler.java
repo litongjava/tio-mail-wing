@@ -7,9 +7,13 @@ import com.litongjava.tio.http.common.HttpResponse;
 import com.tio.mail.wing.model.MailRaw;
 import com.tio.mail.wing.service.MailSaveService;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class ErrorAlarmHandler {
 
   private MailSaveService mailSaveService = Aop.get(MailSaveService.class);
+
   public HttpResponse send(HttpRequest request) {
     HttpResponse response = TioRequestContext.getResponse();
 
@@ -23,9 +27,8 @@ public class ErrorAlarmHandler {
     if (subject == null) {
       subject = "server_error";
     }
-
+    log.info("from {} to {} {} subject {}", fromUser, toUser, mailBox, subject);
     String body = request.getBodyString();
-
     // 使用建造者模式创建一个邮件对象
     MailRaw mail = MailRaw.builder().from(fromUser).to(toUser).subject(subject).body(body).build();
 
