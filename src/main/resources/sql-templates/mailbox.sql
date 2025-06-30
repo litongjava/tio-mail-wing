@@ -117,7 +117,27 @@ WITH ranked_emails AS (
       SELECT 1 FROM mw_mail_flag del_mf WHERE del_mf.mail_id = m.id AND del_mf.flag = '\Deleted'
     )
 )
-
+--# mailbox.getActiveMailFlags
+SELECT
+  m.id,
+  m.uid,
+  m.internal_date,
+  COALESCE(
+    (SELECT ARRAY_AGG(f.flag) FROM mw_mail_flag f WHERE f.mail_id = m.id),
+    '{}'
+  ) as flags
+FROM
+  mw_mail m
+JOIN
+  mw_mail_message msg ON m.message_id = msg.id
+WHERE
+  m.mailbox_id = ? AND m.deleted = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM mw_mail_flag f WHERE f.mail_id = m.id AND f.flag = '\\Deleted'
+  )
+ORDER BY
+  m.uid ASC
+  
 --# mailbox.getActiveMessages
 -- 获取一个邮箱中所有未删除的邮件，包含聚合后的标志
 SELECT

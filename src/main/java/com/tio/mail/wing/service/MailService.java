@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import com.alibaba.excel.converters.string.StringBooleanConverter;
 import com.litongjava.db.activerecord.Db;
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
@@ -23,9 +24,11 @@ import com.litongjava.tio.server.ServerTioConfig;
 import com.litongjava.tio.utils.hutool.StrUtil;
 import com.litongjava.tio.utils.lock.SetWithLock;
 import com.litongjava.tio.utils.snowflake.SnowflakeIdUtils;
+import com.tio.mail.wing.config.ImapServerConfig;
 import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.model.Email;
 import com.tio.mail.wing.model.MailRaw;
+import com.tio.mail.wing.packet.ImapPacket;
 import com.tio.mail.wing.result.WhereClauseResult;
 import com.tio.mail.wing.utils.MailRawUtils;
 
@@ -184,8 +187,31 @@ public class MailService {
       }
 
       // 通知客户端
-      ServerTioConfig serverTioConfig = TioBootServer.me().getServerTioConfig();
-      SetWithLock<ChannelContext> channelContextsByUserid = Tio.getChannelContextsByUserId(serverTioConfig, userId.toString());
+
+      SetWithLock<ChannelContext> channelContexts = Tio.getByUserId(ImapServerConfig.serverTioConfig, userId.toString());
+      Set<ChannelContext> ctxs = channelContexts.getObj();
+      List<Email> all = this.getActiveMailFlags(mailboxId);
+      long exists = all.size();
+      int recent = 0;
+      for (Email e : all) {
+        Set<String> flags = e.getFlags();
+        if (flags.size() > 0) {
+          if (flags.contains("\\Recent")) {
+            recent++;
+          }
+        }
+      }
+
+      StringBuffer sb = new StringBuffer();
+      sb.append("* ").append(exists).append(" EXISTS").append("\r\n");
+      sb.append("* ").append(recent).append(" RECENT").append("\r\n");
+
+      ImapPacket imapPacket = new ImapPacket(sb.toString());
+      for (ChannelContext ctx : ctxs) {
+        //* 9 EXISTS  
+        //* 1 RECENT
+        Tio.send(ctx, imapPacket);
+      }
 
       return result;
     } catch (Exception e) {
@@ -275,6 +301,12 @@ public class MailService {
 
   public List<Email> getActiveMessages(Long mailboxId) {
     String sql = SqlTemplates.get("mailbox.getActiveMessages");
+    List<Row> mailRows = Db.find(sql, mailboxId);
+    return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
+  }
+
+  public List<Email> getActiveMailFlags(Long mailboxId) {
+    String sql = SqlTemplates.get("mailbox.getActiveMailFlags");
     List<Row> mailRows = Db.find(sql, mailboxId);
     return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
