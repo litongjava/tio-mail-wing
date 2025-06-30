@@ -2,25 +2,19 @@ package com.tio.mail.wing.service;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import com.alibaba.excel.converters.string.StringBooleanConverter;
 import com.litongjava.db.activerecord.Db;
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.model.db.IAtom;
 import com.litongjava.template.SqlTemplates;
-import com.litongjava.tio.boot.server.TioBootServer;
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
-import com.litongjava.tio.server.ServerTioConfig;
 import com.litongjava.tio.utils.hutool.StrUtil;
 import com.litongjava.tio.utils.lock.SetWithLock;
 import com.litongjava.tio.utils.snowflake.SnowflakeIdUtils;
@@ -189,28 +183,35 @@ public class MailService {
       // 通知客户端
 
       SetWithLock<ChannelContext> channelContexts = Tio.getByUserId(ImapServerConfig.serverTioConfig, userId.toString());
+      if (channelContexts == null) {
+        return true;
+      }
       Set<ChannelContext> ctxs = channelContexts.getObj();
-      List<Email> all = this.getActiveMailFlags(mailboxId);
-      long exists = all.size();
-      int recent = 0;
-      for (Email e : all) {
-        Set<String> flags = e.getFlags();
-        if (flags.size() > 0) {
-          if (flags.contains("\\Recent")) {
-            recent++;
+      if (ctxs != null && ctxs.size() > 0) {
+        List<Email> all = this.getActiveMailFlags(mailboxId);
+        long exists = all.size();
+        int recent = 0;
+        for (Email e : all) {
+          Set<String> flags = e.getFlags();
+          if (flags.size() > 0) {
+            if (flags.contains("\\Recent")) {
+              recent++;
+            }
           }
         }
-      }
 
-      StringBuffer sb = new StringBuffer();
-      sb.append("* ").append(exists).append(" EXISTS").append("\r\n");
-      sb.append("* ").append(recent).append(" RECENT").append("\r\n");
+        StringBuffer sb = new StringBuffer();
+        sb.append("* ").append(exists).append(" EXISTS").append("\r\n");
+        sb.append("* ").append(recent).append(" RECENT").append("\r\n");
 
-      ImapPacket imapPacket = new ImapPacket(sb.toString());
-      for (ChannelContext ctx : ctxs) {
-        //* 9 EXISTS  
-        //* 1 RECENT
-        Tio.send(ctx, imapPacket);
+        ImapPacket imapPacket = new ImapPacket(sb.toString());
+
+        for (ChannelContext ctx : ctxs) {
+          //* 9 EXISTS  
+          //* 1 RECENT
+          Tio.send(ctx, imapPacket);
+        }
+
       }
 
       return result;
@@ -487,7 +488,10 @@ public class MailService {
     email.setId(row.getLong("id"));
     email.setUid(row.getLong("uid"));
     email.setRawContent(row.getStr("raw_content"));
-    email.setSize(row.getInt("size_in_bytes"));
+    Integer sizeInBytes = row.getInt("size_in_bytes");
+    if (sizeInBytes != null) {
+      email.setSize(sizeInBytes);
+    }
 
     // 新增：设置序列号
     if (row.get("sequence_number") != null) {

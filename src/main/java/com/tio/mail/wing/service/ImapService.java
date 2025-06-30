@@ -11,7 +11,6 @@ import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.tio.core.ChannelContext;
 import com.litongjava.tio.core.Tio;
 import com.litongjava.tio.utils.base64.Base64Utils;
-import com.tio.mail.wing.config.ImapServerConfig;
 import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.handler.ImapSessionContext;
 import com.tio.mail.wing.model.Email;
