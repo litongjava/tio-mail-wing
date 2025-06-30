@@ -3,7 +3,7 @@ package com.tio.mail.wing.service;
 import com.litongjava.db.activerecord.Db;
 import com.litongjava.db.activerecord.Row;
 
-public class MainBoxService {
+public class MailBoxService {
 
   public Row getMailboxByName(long userId, String mailboxName) {
     String sql = "SELECT id, uid_validity, uid_next FROM mw_mailbox WHERE user_id = ? AND name = ? AND deleted = 0";

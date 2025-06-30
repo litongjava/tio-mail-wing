@@ -31,7 +31,8 @@ public class MailboxServiceTest {
     MailService mailboxService = Aop.get(MailService.class);
 
     // Act: Save the email to the recipient's inbox
-    boolean success = mailboxService.saveEmail(toUser, rawContent);
+    MailSaveService mailSaveService = Aop.get(MailSaveService.class);
+    boolean success = mailSaveService.saveEmail(toUser, rawContent);
     System.out.println(success);
 
     // Act: Retrieve active messages for the recipient

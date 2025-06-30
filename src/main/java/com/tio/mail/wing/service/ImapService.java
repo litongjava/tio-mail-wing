@@ -22,7 +22,7 @@ public class ImapService {
 
   private final MwUserService userService = Aop.get(MwUserService.class);
   private final MailService mailService = Aop.get(MailService.class);
-  private MainBoxService mailBoxService = Aop.get(MainBoxService.class);
+  private MailBoxService mailBoxService = Aop.get(MailBoxService.class);
 
   /**
    * EXPUNGE: 逻辑删除并通知客户端

@@ -8,8 +8,8 @@ import com.litongjava.jfinal.aop.Aop;
 import com.tio.mail.wing.handler.SmtpSessionContext;
 
 public class SmtpService {
-  private final MwUserService userService = Aop.get(MwUserService.class);
-  private final MailService mailboxService = Aop.get(MailService.class);
+  private MwUserService userService = Aop.get(MwUserService.class);
+  private MailSaveService mailSaveService = Aop.get(MailSaveService.class);
 
   public String handleEhlo(String[] parts, SmtpSessionContext session) {
     if (session.getState() != SmtpSessionContext.State.CONNECTED) {
@@ -48,7 +48,7 @@ public class SmtpService {
       } else if (session.getState() == SmtpSessionContext.State.AUTH_WAIT_PASSWORD) {
         String username = session.getUsername();
         Long userId = userService.authenticate(username, decoded);
-        if (userId!=null) {
+        if (userId != null) {
           session.setAuthenticated(true);
           session.setUserId(userId);
           session.setState(SmtpSessionContext.State.GREETED);
@@ -110,7 +110,7 @@ public class SmtpService {
     if (".".equals(line)) {
       String mailData = session.getMailContent().toString();
       for (String recipient : session.getToAddresses()) {
-        mailboxService.saveEmail(recipient, mailData);
+        mailSaveService.saveEmail(recipient, mailData);
       }
       String id = UUID.randomUUID().toString();
       session.resetTransaction();
