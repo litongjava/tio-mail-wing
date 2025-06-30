@@ -8,7 +8,10 @@ import java.util.Set;
 
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
+import com.litongjava.tio.core.ChannelContext;
+import com.litongjava.tio.core.Tio;
 import com.litongjava.tio.utils.base64.Base64Utils;
+import com.tio.mail.wing.config.ImapServerConfig;
 import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.handler.ImapSessionContext;
 import com.tio.mail.wing.model.Email;
@@ -19,7 +22,8 @@ import lombok.extern.slf4j.Slf4j;
 public class ImapService {
 
   private final MwUserService userService = Aop.get(MwUserService.class);
-  private final MailboxService mailboxService = Aop.get(MailboxService.class);
+  private final MailService mailService = Aop.get(MailService.class);
+  private MainBoxService mailBoxService = Aop.get(MainBoxService.class);
 
   /**
    * EXPUNGE: 逻辑删除并通知客户端
@@ -30,9 +34,9 @@ public class ImapService {
     StringBuilder sb = new StringBuilder();
 
     // 查询所有待 EXPUNGE 的 seq_num
-    List<Integer> seqs = mailboxService.getExpungeSeqNums(username, mailbox);
+    List<Integer> seqs = mailService.getExpungeSeqNums(username, mailbox);
     // 逻辑删除数据
-    mailboxService.expunge(username, mailbox);
+    mailService.expunge(username, mailbox);
 
     // 通知客户端
     for (int seq : seqs) {
@@ -47,7 +51,7 @@ public class ImapService {
    */
   public String handleCreate(ImapSessionContext session, String tag, String args) {
     String mailboxName = unquote(args);
-    mailboxService.createMailbox(session.getUsername(), mailboxName);
+    mailService.createMailbox(session.getUsername(), mailboxName);
     return tag + " OK CREATE completed." + "\r\n";
   }
 
@@ -56,7 +60,7 @@ public class ImapService {
    */
   public String handleList(ImapSessionContext session, String tag, String args) {
     String username = session.getUsername();
-    List<String> mailboxes = mailboxService.listMailboxes(username);
+    List<String> mailboxes = mailService.listMailboxes(username);
     StringBuilder sb = new StringBuilder();
     for (String m : mailboxes) {
       if (m.equalsIgnoreCase(MailBoxName.TRASH)) {
@@ -76,7 +80,7 @@ public class ImapService {
 
   public String handleCapability(String tag) {
     StringBuilder sb = new StringBuilder();
-    sb.append("* CAPABILITY IMAP4rev1 AUTH=LOGIN IDLE UIDPLUS ID LITERAL+ MOVE").append("\r\n");
+    sb.append("* CAPABILITY IMAP4rev1 AUTH=LOGIN AUTH=PLAIN IDLE UIDPLUS ID LITERAL+ MOVE").append("\r\n");
     sb.append(tag).append(" OK CAPABILITY").append("\r\n");
     return sb.toString();
   }
@@ -110,7 +114,7 @@ public class ImapService {
     return sb.toString();
   }
 
-  public String handleAuthData(ImapSessionContext session, String data) {
+  public String handleAuthData(ImapSessionContext session, String data, ChannelContext channelContext) {
     String tag = session.getCurrentCommandTag();
     StringBuilder sb = new StringBuilder();
     try {
@@ -136,6 +140,7 @@ public class ImapService {
           session.setUsername(user);
           session.setUserId(userId);
           session.setState(ImapSessionContext.State.AUTHENTICATED);
+          Tio.bindUserId(channelContext, userId.toString());
           sb.append(tag).append(" OK AUTHENTICATE completed.").append("\r\n");
         } else {
           session.setState(ImapSessionContext.State.NON_AUTHENTICATED);
@@ -173,10 +178,10 @@ public class ImapService {
   public String handleLogout(ImapSessionContext session, String tag) {
     if (session.getState() == ImapSessionContext.State.SELECTED) {
       Long selectedMailboxId = session.getSelectedMailboxId();
-      
-      mailboxService.clearRecentFlags(selectedMailboxId);
-      mailboxService.expunge(session.getUsername(), session.getSelectedMailbox());
-      
+
+      mailService.clearRecentFlags(selectedMailboxId);
+      mailService.expunge(session.getUsername(), session.getSelectedMailbox());
+
       session.setSelectedMailbox(null);
       session.setSelectedMailboxId(null);
     }
@@ -196,7 +201,7 @@ public class ImapService {
     if (!userExists) {
       return tag + " NO SELECT failed: user not found: " + username + "\r\n";
     }
-    Long mailBoxId = mailboxService.queryMailBoxId(userId, mailbox);
+    Long mailBoxId = mailService.queryMailBoxId(userId, mailbox);
     if (mailBoxId == null || mailBoxId < 1) {
       return tag + " NO SELECT failed: mailbox not found: " + mailbox + "\r\n";
     }
@@ -204,12 +209,12 @@ public class ImapService {
     session.setSelectedMailboxId(mailBoxId);
     session.setState(ImapSessionContext.State.SELECTED);
 
-    Row meta = mailboxService.getMailboxById(userId, mailBoxId);
+    Row meta = mailBoxService.getMailboxById(userId, mailBoxId);
     if (meta == null) {
       return tag + " NO SELECT failed: mailbox not found: " + mailbox + "\r\n";
     }
     //long highest_modseq = mailboxService.highest_modseq(mailBoxId);
-    List<Email> all = mailboxService.getActiveMessages(mailBoxId);
+    List<Email> all = mailService.getActiveMessages(mailBoxId);
 
     long exists = all.size();
     int recent = 0;
@@ -273,14 +278,14 @@ public class ImapService {
 
     List<Email> toUpd = null;
     if (isUid) {
-      toUpd = mailboxService.findEmailsByUidSet(selectedMailboxId, set);
+      toUpd = mailService.findEmailsByUidSet(selectedMailboxId, set);
     } else {
-      toUpd = mailboxService.findEmailsBySeqSet(selectedMailboxId, set);
+      toUpd = mailService.findEmailsBySeqSet(selectedMailboxId, set);
     }
 
     StringBuilder sb = new StringBuilder();
     for (Email e : toUpd) {
-      mailboxService.storeFlags(e.getId(), addFlags, add);
+      mailService.storeFlags(e.getId(), addFlags, add);
       if (!op.contains(".SILENT")) {
         Set<String> flags = e.getFlags();
         flags.addAll(addFlags);
@@ -331,7 +336,7 @@ public class ImapService {
     Long userId = session.getUserId();
     String srcMailbox = session.getSelectedMailbox();
     try {
-      mailboxService.moveEmailsByUidSet(userId, srcMailbox, set, destMailbox);
+      mailService.moveEmailsByUidSet(userId, srcMailbox, set, destMailbox);
       return tag + " OK MOVE completed.\r\n";
     } catch (Exception e) {
       return tag + " NO MOVE failed: " + e.getMessage() + "\r\n";
@@ -354,7 +359,7 @@ public class ImapService {
 
     try {
       // 调用新加的接口
-      mailboxService.copyEmailsByUidSet(user, srcMailbox, set, destMailbox);
+      mailService.copyEmailsByUidSet(user, srcMailbox, set, destMailbox);
       return tag + " OK COPY completed.\r\n";
     } catch (Exception e) {
       return tag + " NO COPY failed: " + e.getMessage() + "\r\n";
@@ -373,14 +378,14 @@ public class ImapService {
     String box = session.getSelectedMailbox();
 
     // 1) 找出待 expunge 的 seq nums，发出 untagged EXPUNGE
-    List<Integer> seqs = mailboxService.getExpungeSeqNums(user, box);
+    List<Integer> seqs = mailService.getExpungeSeqNums(user, box);
     StringBuilder sb = new StringBuilder();
     for (int seq : seqs) {
       sb.append("* ").append(seq).append(" EXPUNGE").append("\r\n");
     }
 
     // 2) 真正逻辑删除
-    mailboxService.expunge(user, box);
+    mailService.expunge(user, box);
 
     // 3) 取消 selected state
     session.setSelectedMailbox(null);
@@ -412,14 +417,14 @@ public class ImapService {
     String fields = parts[1].trim();
     // 拿到 mailboxId
     Long userId = session.getUserId();
-    Long boxId = mailboxService.queryMailBoxId(userId, mbox);
+    Long boxId = mailService.queryMailBoxId(userId, mbox);
     if (boxId == null) {
       return tag + " NO STATUS failed: mailbox not found\r\n";
     }
 
     // 统计各项
     // UIDNEXT:
-    Row row = mailboxService.status(boxId);
+    Row row = mailService.status(boxId);
     long uidNext = row.getLong("uidnext");
 
     // MESSAGES = 总邮件数

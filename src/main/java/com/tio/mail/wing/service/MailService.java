@@ -1,12 +1,9 @@
 package com.tio.mail.wing.service;
 
-import java.nio.charset.StandardCharsets;
-import java.sql.SQLException;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -17,9 +14,14 @@ import java.util.stream.Collectors;
 import com.litongjava.db.activerecord.Db;
 import com.litongjava.db.activerecord.Row;
 import com.litongjava.jfinal.aop.Aop;
+import com.litongjava.model.db.IAtom;
 import com.litongjava.template.SqlTemplates;
-import com.litongjava.tio.utils.digest.Sha256Utils;
+import com.litongjava.tio.boot.server.TioBootServer;
+import com.litongjava.tio.core.ChannelContext;
+import com.litongjava.tio.core.Tio;
+import com.litongjava.tio.server.ServerTioConfig;
 import com.litongjava.tio.utils.hutool.StrUtil;
+import com.litongjava.tio.utils.lock.SetWithLock;
 import com.litongjava.tio.utils.snowflake.SnowflakeIdUtils;
 import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.model.Email;
@@ -30,9 +32,10 @@ import com.tio.mail.wing.utils.MailRawUtils;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-public class MailboxService {
+public class MailService {
 
   private MwUserService mwUserService = Aop.get(MwUserService.class);
+  private MainBoxService mailBoxService = Aop.get(MainBoxService.class);
 
   /**
    * 单独的 * → 匹配所有序号
@@ -150,6 +153,48 @@ public class MailboxService {
   }
 
   /**
+   * 内部核心的邮件保存方法。
+   * 优化：使用事务和原子性UID更新。
+   */
+  private boolean saveEmailInternal(String username, String mailboxName, String rawContent) {
+    // 1. 获取用户和邮箱信息
+    Row user = mwUserService.getUserByUsername(username);
+    if (user == null) {
+      log.error("User '{}' not found. Cannot save email.", username);
+      return false;
+    }
+    Long userId = user.getLong("id");
+
+    Row mailbox = mailBoxService.getMailboxByName(userId, mailboxName);
+    if (mailbox == null) {
+      log.error("Mailbox '{}' not found for user '{}'.", mailboxName, username);
+      return false;
+    }
+
+    Long mailboxId = mailbox.getLong("id");
+    return saveEmailInternal(username, mailboxName, rawContent, userId, mailboxId);
+  }
+
+  private boolean saveEmailInternal(String username, String mailboxName, String rawContent, Long userId, Long mailboxId) {
+    IAtom atom = new MailSaveAtom(userId, username, mailboxId, mailboxName, rawContent);
+    try {
+      boolean result = Db.tx(atom);
+      if (!result) {
+        return result;
+      }
+
+      // 通知客户端
+      ServerTioConfig serverTioConfig = TioBootServer.me().getServerTioConfig();
+      SetWithLock<ChannelContext> channelContextsByUserid = Tio.getChannelContextsByUserId(serverTioConfig, userId.toString());
+
+      return result;
+    } catch (Exception e) {
+      log.error("Error saving email for user '{}' in mailbox '{}'", username, mailboxName, e);
+      return false;
+    }
+  }
+
+  /**
    * [兼容POP3] 获取用户收件箱(INBOX)中所有未删除的邮件。
    * 注意：此方法现在性能更高，但如果邮箱巨大，仍需考虑分页。
    */
@@ -173,7 +218,7 @@ public class MailboxService {
       return new int[] { 0, 0 };
     }
 
-    Row mailbox = getMailboxByName(user.getLong("id"), MailBoxName.INBOX);
+    Row mailbox = mailBoxService.getMailboxByName(user.getLong("id"), MailBoxName.INBOX);
     if (mailbox == null)
       return new int[] { 0, 0 };
 
@@ -209,80 +254,8 @@ public class MailboxService {
    * [兼容POP3] 获取邮件的唯一ID列表，用于 UIDL 命令，针对INBOX。
    */
   public List<Long> listUids(Long userId) {
-    Long mailboxId = getMailboxIdByName(userId, MailBoxName.INBOX);
+    Long mailboxId = mailBoxService.getMailboxIdByName(userId, MailBoxName.INBOX);
     return this.listUids(userId, mailboxId);
-  }
-
-  /**
-   * 内部核心的邮件保存方法。
-   * 优化：使用事务和原子性UID更新。
-   */
-  private boolean saveEmailInternal(String username, String mailboxName, String rawContent) {
-    try {
-      return Db.tx(() -> {
-        // 1. 获取用户和邮箱信息
-        Row user = mwUserService.getUserByUsername(username);
-        if (user == null) {
-          log.error("User '{}' not found. Cannot save email.", username);
-          return false;
-        }
-        long userId = user.getLong("id");
-
-        Row mailbox = getMailboxByName(userId, mailboxName);
-        if (mailbox == null) {
-          log.error("Mailbox '{}' not found for user '{}'.", mailboxName, username);
-          return false;
-        }
-        long mailboxId = mailbox.getLong("id");
-
-        // 2. 处理邮件内容，实现去重 (mw_mail_message)
-        String contentHash = Sha256Utils.digestToHex(rawContent);
-        int sizeInBytes = rawContent.getBytes(StandardCharsets.UTF_8).length;
-
-        Row message = Db.findFirst(SqlTemplates.get("mailbox.message.findByHash"), contentHash);
-        long messageId;
-        long id = SnowflakeIdUtils.id();
-        if (message == null) {
-          Map<String, String> headers = parseHeaders(rawContent);
-          Row newMessage = Row.by("id", id).set("content_hash", contentHash)
-              //
-              .set("message_id_header", headers.get("Message-ID"))
-              //
-              .set("subject", headers.get("Subject"))
-              //
-              .set("from_address", headers.get("From")).set("to_address", headers.get("To"))
-              //
-              .set("size_in_bytes", sizeInBytes).set("raw_content", rawContent);
-          Db.save("mw_mail_message", "id", newMessage);
-          messageId = newMessage.getLong("id");
-        } else {
-          messageId = message.getLong("id");
-        }
-
-        // 3. 原子地获取并更新邮箱的下一个UID (mw_mailbox)
-        String updateSql = SqlTemplates.get("mailbox.updateUidNextAndGet");
-        Row result = Db.findFirst(updateSql, mailboxId);
-        if (result == null) {
-          throw new SQLException("Failed to increment and retrieve uid_next for mailbox " + mailboxId);
-        }
-        long nextUid = result.getLong("next_uid");
-
-        // 4. 创建邮件实例 (mw_mail)
-        Row mailInstance = Row.by("id", id).set("user_id", userId).set("mailbox_id", mailboxId).set("message_id", messageId).set("uid", nextUid).set("internal_date", new Date());
-        Db.save("mw_mail", "id", mailInstance);
-
-        // 5. 为新邮件设置 \Recent 标志 (mw_mail_flag)
-        long flagId = SnowflakeIdUtils.id();
-        Row recentFlag = Row.by("id", flagId).set("mail_id", id).set("flag", "\\Recent");
-        Db.save("mw_mail_flag", recentFlag);
-
-        log.info("Saved new email for {} in mailbox {} with UID {}. Mail instance ID: {}", username, mailboxName, nextUid, id);
-        return true;
-      });
-    } catch (Exception e) {
-      log.error("Error saving email for user '{}' in mailbox '{}'", username, mailboxName, e);
-      return false;
-    }
   }
 
   /**
@@ -290,7 +263,7 @@ public class MailboxService {
    * 优化：使用单个SQL查询，将邮件、内容和标志一次性获取。
    */
   public List<Email> getActiveMessages(Long userId, String mailboxName) {
-    Row mailbox = getMailboxByName(userId, mailboxName);
+    Row mailbox = mailBoxService.getMailboxByName(userId, mailboxName);
     if (mailbox == null)
       return Collections.emptyList();
 
@@ -310,7 +283,7 @@ public class MailboxService {
    * [IMAP核心] 获取邮箱的元数据。
    */
   public Row getMailboxMetadata(Long userId, String mailboxName) {
-    Row mailbox = getMailboxByName(userId, mailboxName);
+    Row mailbox = mailBoxService.getMailboxByName(userId, mailboxName);
     if (mailbox == null) {
       return null;
     }
@@ -334,7 +307,7 @@ public class MailboxService {
     Row user = mwUserService.getUserByUsername(username);
     if (user == null)
       return null;
-    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
+    Row mailbox = mailBoxService.getMailboxByName(user.getLong("id"), mailboxName);
     if (mailbox == null)
       return null;
 
@@ -383,7 +356,7 @@ public class MailboxService {
   }
 
   public void clearRecentFlags(Long userId, String mailboxName) {
-    Row mailbox = getMailboxByName(userId, mailboxName);
+    Row mailbox = mailBoxService.getMailboxByName(userId, mailboxName);
     if (mailbox == null) {
       return;
     }
@@ -406,7 +379,7 @@ public class MailboxService {
       return Collections.emptyList();
     }
 
-    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
+    Row mailbox = mailBoxService.getMailboxByName(user.getLong("id"), mailboxName);
     if (mailbox == null) {
       return Collections.emptyList();
     }
@@ -445,7 +418,7 @@ public class MailboxService {
       return Collections.emptyList();
     }
 
-    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
+    Row mailbox = mailBoxService.getMailboxByName(user.getLong("id"), mailboxName);
     if (mailbox == null) {
       return Collections.emptyList();
     }
@@ -472,21 +445,6 @@ public class MailboxService {
 
     List<Row> mailRows = Db.find(finalSql, params.toArray());
     return mailRows.stream().map(this::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
-  }
-
-  private Row getMailboxByName(long userId, String mailboxName) {
-    String sql = "SELECT id, uid_validity, uid_next FROM mw_mailbox WHERE user_id = ? AND name = ? AND deleted = 0";
-    return Db.findFirst(sql, userId, mailboxName);
-  }
-
-  public Row getMailboxById(long userId, long mailboxId) {
-    String sql = "SELECT id, uid_validity, uid_next FROM mw_mailbox WHERE user_id = ? AND id = ? AND deleted = 0";
-    return Db.findFirst(sql, userId, mailboxId);
-  }
-
-  private Long getMailboxIdByName(long userId, String mailboxName) {
-    String sql = "SELECT id WHERE user_id = ? AND name = ? AND deleted = 0";
-    return Db.queryLong(sql, userId, mailboxName);
   }
 
   /**
@@ -561,24 +519,6 @@ public class MailboxService {
   private Long getMaxUid(long mailboxId) {
     Row row = Db.findFirst(SqlTemplates.get("mailbox.getMaxUid"), mailboxId);
     return (row != null && row.getLong("max") != null) ? row.getLong("max") : 0L;
-  }
-
-  private Map<String, String> parseHeaders(String rawContent) {
-    Map<String, String> headers = new HashMap<>();
-    String[] lines = rawContent.split("\r\n");
-    for (String line : lines) {
-      if (line.isEmpty())
-        break;
-      int colonIndex = line.indexOf(':');
-      if (colonIndex > 0) {
-        String key = line.substring(0, colonIndex).trim();
-        String value = line.substring(colonIndex + 1).trim();
-        if (Arrays.asList("Message-ID", "Subject", "From", "To").contains(key)) {
-          headers.put(key, value);
-        }
-      }
-    }
-    return headers;
   }
 
   /**
@@ -660,8 +600,8 @@ public class MailboxService {
   }
 
   public void moveEmailsByUidSet(Long userId, String src, String uidSet, String dest) {
-    long srcMailboxId = getMailboxByName(userId, src).getLong("id");
-    long destMailboxId = getMailboxByName(userId, dest).getLong("id");
+    long srcMailboxId = mailBoxService.getMailboxByName(userId, src).getLong("id");
+    long destMailboxId = mailBoxService.getMailboxByName(userId, dest).getLong("id");
 
     // 1. 解析 UID set
     List<Long> uids = parseUidSet(uidSet, srcMailboxId); // 比如 [42L, 43L, 44L]

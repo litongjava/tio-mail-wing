@@ -28,7 +28,7 @@ public class MailboxServiceTest {
     MailRaw mail = MailRaw.builder().from(fromUser).to(toUser).subject(subject).body(body).build();
 
     String rawContent = MailRawUtils.toRawContent(mail);
-    MailboxService mailboxService = Aop.get(MailboxService.class);
+    MailService mailboxService = Aop.get(MailService.class);
 
     // Act: Save the email to the recipient's inbox
     boolean success = mailboxService.saveEmail(toUser, rawContent);

@@ -23,7 +23,7 @@ public class ImapFetchService {
   private static final Pattern BODY_FETCH_PATTERN = Pattern.compile("BODY(?:\\.PEEK)?\\[(.*?)\\]", Pattern.CASE_INSENSITIVE);
   private static final Pattern UID_FETCH_PATTERN = Pattern.compile("([\\d\\*:,\\-]+)\\s+\\((.*)\\)", Pattern.CASE_INSENSITIVE);
 
-  private final MailboxService mailboxService = Aop.get(MailboxService.class);
+  private final MailService mailboxService = Aop.get(MailService.class);
 
   public String handleFetch(ImapSessionContext session, String tag, String args, boolean isUid) {
     if (session.getState() != ImapSessionContext.State.SELECTED) {

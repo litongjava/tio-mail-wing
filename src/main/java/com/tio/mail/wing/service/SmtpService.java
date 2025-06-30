@@ -9,7 +9,7 @@ import com.tio.mail.wing.handler.SmtpSessionContext;
 
 public class SmtpService {
   private final MwUserService userService = Aop.get(MwUserService.class);
-  private final MailboxService mailboxService = Aop.get(MailboxService.class);
+  private final MailService mailboxService = Aop.get(MailService.class);
 
   public String handleEhlo(String[] parts, SmtpSessionContext session) {
     if (session.getState() != SmtpSessionContext.State.CONNECTED) {

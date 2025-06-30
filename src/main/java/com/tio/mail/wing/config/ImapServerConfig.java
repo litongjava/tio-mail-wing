@@ -12,12 +12,11 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class ImapServerConfig {
+  public static ServerTioConfig serverTioConfig = new ServerTioConfig("imap-server");
 
   public void startImapServer() {
     ImapServerAioHandler serverHandler = new ImapServerAioHandler();
     ImapServerAioListener serverListener = new ImapServerAioListener();
-
-    ServerTioConfig serverTioConfig = new ServerTioConfig("imap-server");
     serverTioConfig.setServerAioHandler(serverHandler);
     serverTioConfig.setServerAioListener(serverListener);
     serverTioConfig.setHeartbeatTimeout(-1);

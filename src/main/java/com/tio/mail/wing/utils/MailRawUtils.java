@@ -1,5 +1,9 @@
 package com.tio.mail.wing.utils;
 
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Map;
+
 import com.tio.mail.wing.model.MailRaw;
 
 public class MailRawUtils {
@@ -37,5 +41,23 @@ public class MailRawUtils {
     rawContent.append(mail.getBody());
 
     return rawContent.toString();
+  }
+  
+  public static Map<String, String> parseHeaders(String rawContent) {
+    Map<String, String> headers = new HashMap<>();
+    String[] lines = rawContent.split("\r\n");
+    for (String line : lines) {
+      if (line.isEmpty())
+        break;
+      int colonIndex = line.indexOf(':');
+      if (colonIndex > 0) {
+        String key = line.substring(0, colonIndex).trim();
+        String value = line.substring(colonIndex + 1).trim();
+        if (Arrays.asList("Message-ID", "Subject", "From", "To").contains(key)) {
+          headers.put(key, value);
+        }
+      }
+    }
+    return headers;
   }
 }

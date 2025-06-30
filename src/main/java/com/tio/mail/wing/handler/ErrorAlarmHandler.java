@@ -5,7 +5,7 @@ import com.litongjava.tio.boot.http.TioRequestContext;
 import com.litongjava.tio.http.common.HttpRequest;
 import com.litongjava.tio.http.common.HttpResponse;
 import com.tio.mail.wing.model.MailRaw;
-import com.tio.mail.wing.service.MailboxService;
+import com.tio.mail.wing.service.MailService;
 
 public class ErrorAlarmHandler {
 
@@ -28,7 +28,7 @@ public class ErrorAlarmHandler {
     // 使用建造者模式创建一个邮件对象
     MailRaw mail = MailRaw.builder().from(fromUser).to(toUser).subject(subject).body(body).build();
 
-    MailboxService mailboxService = Aop.get(MailboxService.class);
+    MailService mailboxService = Aop.get(MailService.class);
     // Act: Save the email to the recipient's inbox
     boolean success = mailboxService.saveEmail(toUser, mailBox, mail);
     if (success) {

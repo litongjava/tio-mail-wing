@@ -11,7 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 public class Pop3Service {
 
   private final MwUserService userService = Aop.get(MwUserService.class);
-  private final MailboxService mailboxService = Aop.get(MailboxService.class);
+  private final MailService mailboxService = Aop.get(MailService.class);
 
   /**
    * 处理授权阶段命令，返回一次性可发送的 POP3 响应字符串

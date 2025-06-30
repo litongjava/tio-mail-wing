@@ -60,7 +60,7 @@ public class ImapServerAioHandler implements ServerAioHandler {
     }
 
     if (session.getState() == ImapSessionContext.State.AUTH_WAIT_USERNAME || session.getState() == ImapSessionContext.State.AUTH_WAIT_PASSWORD) {
-      String reply = imapService.handleAuthData(session, line);
+      String reply = imapService.handleAuthData(session, line, ctx);
       if (reply != null) {
         Tio.bSend(ctx, new ImapPacket(reply));
       }
