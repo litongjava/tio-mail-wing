@@ -224,6 +224,14 @@ curl --location --request POST 'http://localhost/alarm' \
 使用客户端拉取报警信息,我使用的客户端Thunderbrid显示信息如下
 
 ![alt text](images/image.png)
+## 配置DNS
+| 类型      | 主机名                 | 值／内容                                                 | 优先级 | 说明                                     |
+| ------- | ------------------- | ---------------------------------------------------- | --- | -------------------------------------- |
+| **A**   | mail                |  公司IP                                         | —   | mail.litong.xyz → 你的邮件服务器公网 IP         |
+| **MX**  | @ (根域名)             | mail.litong.xyz                                      | 10  | 所有发往 litong.xyz 的邮件都交给 mail.litong.xyz |
+| **TXT** | @                   | 	v=spf1 mx ~all                                     | —   | SPF：只允许 MX 主机（也就是 mail.litong.xyz）发信   |
+| **TXT** | default._domainkey | （你的 DKIM 公钥）                                         | —   | DKIM：签名验证，需先在服务器生成密钥对                  |
+| **TXT** | _dmarc             | 	v=DMARC1; p=none; rua=mailto:postmaster@litong.xyz | —   | DMARC：告知收件端如何处理未通过 SPF/DKIM 的邮件        |
 
 ## 贡献
 

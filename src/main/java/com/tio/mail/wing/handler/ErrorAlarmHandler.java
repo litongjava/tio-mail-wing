@@ -4,6 +4,7 @@ import com.litongjava.jfinal.aop.Aop;
 import com.litongjava.tio.boot.http.TioRequestContext;
 import com.litongjava.tio.http.common.HttpRequest;
 import com.litongjava.tio.http.common.HttpResponse;
+import com.tio.mail.wing.consts.MailBoxName;
 import com.tio.mail.wing.model.MailRaw;
 import com.tio.mail.wing.service.MailSaveService;
 
@@ -18,10 +19,16 @@ public class ErrorAlarmHandler {
     HttpResponse response = TioRequestContext.getResponse();
 
     String fromUser = request.getHeader("mail-from-user");
+    if (fromUser == null) {
+      fromUser = "noreply@litong.xyz";
+    }
     String toUser = request.getHeader("mail-to-user");
+    if (toUser == null) {
+      fromUser = "error@litong.xyz";
+    }
     String mailBox = request.getHeader("mail-to-mailbox");
     if (mailBox == null) {
-      mailBox = "server_error";
+      mailBox = MailBoxName.INBOX;
     }
     String subject = request.getHeader("mail-subject");
     if (subject == null) {

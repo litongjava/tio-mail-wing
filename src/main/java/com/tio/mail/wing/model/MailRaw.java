@@ -18,7 +18,7 @@ public class MailRaw {
   private String body; // 邮件正文
 
   @Builder.Default
-  private String messageId = "<" + UUID.randomUUID().toString() + "@tio.com>";
+  private String messageId = "<" + UUID.randomUUID().toString() + "@litong.xyz>";
 
   @Builder.Default
   private ZonedDateTime date = ZonedDateTime.now();
