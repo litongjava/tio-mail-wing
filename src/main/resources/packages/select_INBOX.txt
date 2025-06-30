@@ -1,0 +1,7 @@
+* FLAGS (\Answered \Flagged \Deleted \Seen \Draft)
+* OK [PERMANENTFLAGS (\Answered \Flagged \Deleted \Seen \Draft \*)] Flags permitted.
+* 6 EXISTS
+* 2 RECENT
+* OK [UNSEEN 5] First unseen.
+* OK [UIDVALIDITY 1750701677] UIDs valid
+* OK [UIDNEXT 7] Predicted next UID

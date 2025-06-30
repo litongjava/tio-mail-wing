@@ -1,0 +1,6 @@
+* 1 FETCH (UID 1 FLAGS (\Seen))
+* 2 FETCH (UID 2 FLAGS (\Seen))
+* 3 FETCH (UID 3 FLAGS (\Seen))
+* 4 FETCH (UID 4 FLAGS (\Seen))
+* 5 FETCH (UID 5 FLAGS (\Recent))
+* 6 FETCH (UID 6 FLAGS (\Recent))

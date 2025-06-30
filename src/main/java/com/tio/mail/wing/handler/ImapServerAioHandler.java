@@ -62,7 +62,7 @@ public class ImapServerAioHandler implements ServerAioHandler {
     if (session.getState() == ImapSessionContext.State.AUTH_WAIT_USERNAME || session.getState() == ImapSessionContext.State.AUTH_WAIT_PASSWORD) {
       String reply = imapService.handleAuthData(session, line);
       if (reply != null) {
-        Tio.send(ctx, new ImapPacket(reply));
+        Tio.bSend(ctx, new ImapPacket(reply));
       }
       return;
     }
@@ -93,7 +93,7 @@ public class ImapServerAioHandler implements ServerAioHandler {
       case "LOGOUT":
         reply = imapService.handleLogout(session, tag);
         if (reply != null) {
-          Tio.send(ctx, new ImapPacket(reply));
+          Tio.bSend(ctx, new ImapPacket(reply));
         }
         Tio.close(ctx, "logout");
         return;
@@ -113,6 +113,10 @@ public class ImapServerAioHandler implements ServerAioHandler {
         break;
       case "SELECT":
         reply = imapService.handleSelect(session, tag, args);
+        break;
+      case "STATUS":
+        // args 里是: "<mailbox>" "(UIDNEXT MESSAGES UNSEEN RECENT)"
+        reply = imapService.handleStatus(session, tag, args);
         break;
       case "FETCH":
         // 传递 isUidCommand = false
@@ -145,7 +149,8 @@ public class ImapServerAioHandler implements ServerAioHandler {
     }
 
     if (reply != null) {
-      Tio.send(ctx, new ImapPacket(reply));
+      log.info(reply);
+      Tio.bSend(ctx, new ImapPacket(reply));
     }
   }
 

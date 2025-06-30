@@ -24,13 +24,13 @@ public class MailRaw {
   private ZonedDateTime date = ZonedDateTime.now();
 
   @Builder.Default
-  private String contentType = "text/plain; charset=UTF-8";
+  private String contentType = "text/plain; charset=UTF-8; format=flowed";
 
   @Builder.Default
   private String mimeVersion = "1.0";
 
   @Builder.Default
-  private String userAgent = "default/1.0";
+  private String userAgent = "Mozilla Thunderbird";
 
   // 用于格式化日期为 RFC 2822 标准格式
   public String getFormattedDate() {

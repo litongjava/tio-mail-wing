@@ -14,6 +14,9 @@ import com.litongjava.jfinal.aop.Aop;
 import com.tio.mail.wing.handler.ImapSessionContext;
 import com.tio.mail.wing.model.Email;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class ImapFetchService {
   private static final String[] EMAIL_HEADER_FIELDS = new String[] { "From", "To", "Cc", "Bcc", "Subject", "Date", "Message-ID", "Priority", "X-Priority", "References", "Newsgroups", "In-Reply-To",
       "Content-Type", "Reply-To" };
@@ -21,7 +24,7 @@ public class ImapFetchService {
   private static final Pattern UID_FETCH_PATTERN = Pattern.compile("([\\d\\*:,\\-]+)\\s+\\((.*)\\)", Pattern.CASE_INSENSITIVE);
 
   private final MailboxService mailboxService = Aop.get(MailboxService.class);
-  
+
   public String handleFetch(ImapSessionContext session, String tag, String args, boolean isUid) {
     if (session.getState() != ImapSessionContext.State.SELECTED) {
       return tag + " NO FETCH failed: No mailbox selected\r\n";
@@ -32,7 +35,9 @@ public class ImapFetchService {
     }
 
     String user = session.getUsername();
+    Long userId = session.getUserId();
     String box = session.getSelectedMailbox();
+    Long mailBoxId = session.getSelectedMailboxId();
     String set = m.group(1);
     String items = m.group(2).toUpperCase();
 
@@ -51,21 +56,20 @@ public class ImapFetchService {
 
     if (items.equalsIgnoreCase("FLAGS")) {
       //UID fetch 1:* (FLAGS)
-      sb = fetchFlags(user, box, items, isUid, toFetch);
+      sb = fetchFlags(userId, mailBoxId, items, isUid, toFetch);
 
     } else if (items.contains("BODY.PEEK[]")) {
-      //UID fetch 4 (UID RFC822.SIZE BODY[])
-      sb = fetchBodyPeek(user, box, items, isUid, toFetch);
+      sb = fetchBodyPeek(userId, mailBoxId, items, isUid, toFetch);
 
     } else if (items.contains("BODY[]")) {
-      sb = fetchBody(user, box, items, isUid, toFetch);
+      sb = fetchBody(userId, mailBoxId, items, isUid, toFetch);
     } else {
       Matcher b = BODY_FETCH_PATTERN.matcher(items);
       if (b.find()) {
         //UID fetch 1:6 (UID RFC822.SIZE FLAGS BODY.PEEK[HEADER.FIELDS (From To Cc Bcc Subject Date Message-ID Priority X-Priority References Newsgroups In-Reply-To Content-Type Reply-To)])
         String partToken = b.group(0);
         partToken = partToken.replace("BODY.PEEK", "BODY");
-        sb = fetchHeader(user, box, items, isUid, partToken, toFetch);
+        sb = fetchHeader(userId, mailBoxId, items, isUid, partToken, toFetch);
       }
     }
 
@@ -73,17 +77,19 @@ public class ImapFetchService {
     return sb.toString();
   }
 
-  private StringBuilder fetchFlags(String user, String box, String items, boolean isUid, List<Email> toFetch) {
+  private StringBuilder fetchFlags(Long userId, Long mailBoxId, String items, boolean isUid, List<Email> toFetch) {
 
     StringBuilder sb = new StringBuilder();
+    List<Long> allUids = mailboxService.listUids(userId, mailBoxId);
 
     for (int i = 0; i < toFetch.size(); i++) {
-      int seq = i + 1;
+
       Email e = toFetch.get(i);
+      int seq = allUids.indexOf(e.getUid()) + 1;
 
       List<String> parts = new ArrayList<>();
       parts.add("UID " + e.getUid());
-      
+
       Set<String> flags = e.getFlags();
       if (flags != null) {
         parts.add("FLAGS (" + String.join(" ", flags) + ")");
@@ -97,13 +103,13 @@ public class ImapFetchService {
     return sb;
   }
 
-  private StringBuilder fetchHeader(String user, String box, String items, boolean isUid, String partToken, List<Email> toFetch) {
+  private StringBuilder fetchHeader(Long userId, Long mailBoxId, String items, boolean isUid, String partToken, List<Email> toFetch) {
     StringBuilder sb = new StringBuilder();
-
+    List<Long> allUids = mailboxService.listUids(userId, mailBoxId);
     for (int i = 0; i < toFetch.size(); i++) {
-      int seq = i + 1;
-
       Email e = toFetch.get(i);
+      int seq = allUids.indexOf(e.getUid()) + 1;
+
       // 先把整封 raw byte[] 读出来，用于大小计算
       String rawContent = e.getRawContent();
       byte[] raw = rawContent.getBytes(StandardCharsets.UTF_8);
@@ -114,20 +120,20 @@ public class ImapFetchService {
       String hdr = parseHeaderFields(rawContent, EMAIL_HEADER_FIELDS);
       byte[] hdrBytes = hdr.getBytes(StandardCharsets.UTF_8);
       sb.append(prefix).append(" ").append(partToken);
-      sb.append(" {").append(hdrBytes.length).append("}\r\n");
+      sb.append(" {").append(hdrBytes.length + 2).append("}\r\n");
       sb.append(hdr);
-      sb.append(hdr).append("\r\n)\r\n");
+      sb.append("\r\n)\r\n");
     }
     return sb;
   }
 
-  private StringBuilder fetchBody(String user, String box, String items, boolean isUid, List<Email> toFetch) {
+  private StringBuilder fetchBody(Long userId, Long mailBoxId, String items, boolean isUid, List<Email> toFetch) {
     StringBuilder sb = new StringBuilder();
-
+    List<Long> allUids = mailboxService.listUids(userId, mailBoxId);
     for (int i = 0; i < toFetch.size(); i++) {
-      int seq = i + 1;
-
       Email e = toFetch.get(i);
+      int seq = allUids.indexOf(e.getUid()) + 1;
+
       // 先把整封 raw byte[] 读出来，用于大小计算
       String rawContent = e.getRawContent();
       byte[] raw = rawContent.getBytes(StandardCharsets.UTF_8);
@@ -145,13 +151,13 @@ public class ImapFetchService {
     return sb;
   }
 
-  private StringBuilder fetchBodyPeek(String user, String box, String items, boolean isUid, List<Email> toFetch) {
+  private StringBuilder fetchBodyPeek(Long userId, Long mailBoxId, String items, boolean isUid, List<Email> toFetch) {
     StringBuilder sb = new StringBuilder();
-
+    List<Long> allUids = mailboxService.listUids(userId, mailBoxId);
     for (int i = 0; i < toFetch.size(); i++) {
-      int seq = i + 1;
 
       Email e = toFetch.get(i);
+      int seq = allUids.indexOf(e.getUid()) + 1;
       // 先把整封 raw byte[] 读出来，用于大小计算
       String rawContent = e.getRawContent();
       byte[] raw = rawContent.getBytes(StandardCharsets.UTF_8);
@@ -189,7 +195,6 @@ public class ImapFetchService {
     String prefix = "* " + seq + " FETCH (" + String.join(" ", parts);
     return prefix;
   }
-
 
   public String parseHeaderFields(String content, String[] fields) {
     Map<String, String> hdr = new HashMap<>();

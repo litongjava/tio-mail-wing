@@ -233,3 +233,65 @@ UPDATE mw_mail m
   CROSS JOIN newuids nu
  WHERE m.id = mv.id
 RETURNING mv.idx, m.id, m.uid;  
+
+--# mailbox.listUids
+SELECT m.uid
+FROM mw_mail m
+JOIN mw_mailbox b ON m.mailbox_id = b.id
+WHERE b.user_id = ?
+  AND b.id = ?
+  AND NOT EXISTS (
+    SELECT 1
+    FROM mw_mail_flag f
+    WHERE f.mail_id = m.id
+      AND f.flag = '\Deleted'
+  )
+ORDER BY m.uid ASC;
+
+--# mailbox.status
+SELECT
+  (SELECT uid_next
+     FROM mw_mailbox
+    WHERE id = ?
+  ) AS uidnext,
+  (SELECT COUNT(*)
+     FROM mw_mail m
+    WHERE m.mailbox_id = ?
+      AND m.deleted = 0
+      AND NOT EXISTS (
+        SELECT 1
+          FROM mw_mail_flag f
+         WHERE f.mail_id = m.id
+           AND f.flag = '\Deleted'
+      )
+  ) AS messages,
+  (SELECT COUNT(*)
+     FROM mw_mail m
+    WHERE m.mailbox_id = ?
+      AND m.deleted = 0
+      AND NOT EXISTS (
+        SELECT 1
+          FROM mw_mail_flag f
+         WHERE f.mail_id = m.id
+           AND f.flag = '\Deleted'
+      )
+      AND NOT EXISTS (
+        SELECT 1
+          FROM mw_mail_flag f2
+         WHERE f2.mail_id = m.id
+           AND f2.flag = '\Seen'
+      )
+  ) AS unseen,
+  (SELECT COUNT(*)
+     FROM mw_mail_flag f
+     JOIN mw_mail m ON m.id = f.mail_id
+    WHERE m.mailbox_id = ?
+      AND m.deleted = 0
+      AND f.flag = '\Recent'
+      AND NOT EXISTS (
+        SELECT 1
+          FROM mw_mail_flag del_f
+         WHERE del_f.mail_id = m.id
+           AND del_f.flag = '\Deleted'
+      )
+  ) AS recent;

@@ -209,7 +209,8 @@ public class MailboxService {
    * [兼容POP3] 获取邮件的唯一ID列表，用于 UIDL 命令，针对INBOX。
    */
   public List<Long> listUids(Long userId) {
-    return getActiveMessages(userId, MailBoxName.INBOX).stream().map(Email::getUid).collect(Collectors.toList());
+    Long mailboxId = getMailboxIdByName(userId, MailBoxName.INBOX);
+    return this.listUids(userId, mailboxId);
   }
 
   /**
@@ -381,12 +382,22 @@ public class MailboxService {
       return;
     }
 
-    Row mailbox = getMailboxByName(user.getLong("id"), mailboxName);
+    Long userId = user.getLong("id");
+    clearRecentFlags(userId, mailboxName);
+  }
+
+  public void clearRecentFlags(Long userId, String mailboxName) {
+    Row mailbox = getMailboxByName(userId, mailboxName);
     if (mailbox == null) {
       return;
     }
+    Long mailBoxId = mailbox.getLong("id");
+    clearRecentFlags(mailBoxId);
+  }
+
+  public void clearRecentFlags(Long mailBoxId) {
     String sql = SqlTemplates.get("mailbox.flags.clearRecent");
-    Db.updateBySql(sql, mailbox.getLong("id"));
+    Db.updateBySql(sql, mailBoxId);
   }
 
   /**
@@ -475,6 +486,11 @@ public class MailboxService {
   public Row getMailboxById(long userId, long mailboxId) {
     String sql = "SELECT id, uid_validity, uid_next FROM mw_mailbox WHERE user_id = ? AND id = ? AND deleted = 0";
     return Db.findFirst(sql, userId, mailboxId);
+  }
+
+  private Long getMailboxIdByName(long userId, String mailboxName) {
+    String sql = "SELECT id WHERE user_id = ? AND name = ? AND deleted = 0";
+    return Db.queryLong(sql, userId, mailboxName);
   }
 
   /**
@@ -677,6 +693,16 @@ public class MailboxService {
   public long highest_modseq(long mailboxId) {
     String sql = "select highest_modseq from mw_mailbox where id=?";
     return Db.queryLong(sql, mailboxId);
+  }
+
+  public List<Long> listUids(Long userId, Long mailBoxId) {
+    String sql = SqlTemplates.get("mailbox.listUids");
+    return Db.queryListLong(sql, userId, mailBoxId);
+  }
+
+  public Row status(Long boxId) {
+    String sql = SqlTemplates.get("mailbox.status");
+    return Db.findFirst(sql, boxId, boxId, boxId, boxId);
   }
 
 }

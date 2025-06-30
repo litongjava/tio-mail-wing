@@ -172,7 +172,11 @@ public class ImapService {
 
   public String handleLogout(ImapSessionContext session, String tag) {
     if (session.getState() == ImapSessionContext.State.SELECTED) {
+      Long selectedMailboxId = session.getSelectedMailboxId();
+      
+      mailboxService.clearRecentFlags(selectedMailboxId);
       mailboxService.expunge(session.getUsername(), session.getSelectedMailbox());
+      
       session.setSelectedMailbox(null);
       session.setSelectedMailboxId(null);
     }
@@ -204,39 +208,52 @@ public class ImapService {
     if (meta == null) {
       return tag + " NO SELECT failed: mailbox not found: " + mailbox + "\r\n";
     }
-    long highest_modseq = mailboxService.highest_modseq(mailBoxId);
+    //long highest_modseq = mailboxService.highest_modseq(mailBoxId);
     List<Email> all = mailboxService.getActiveMessages(mailBoxId);
-    mailboxService.clearRecentFlags(username, mailbox);
+
     long exists = all.size();
     int recent = 0;
+    long unseen = 0;
     for (Email e : all) {
       Set<String> flags = e.getFlags();
       if (flags.size() > 0) {
         if (flags.contains("\\Recent")) {
           recent++;
         }
-      }
+        if (!flags.contains("\\Seen")) {
+          if (unseen == 0) {
+            unseen = e.getUid();
+          }
 
+        }
+      } else {
+        if (unseen == 0) {
+          unseen = e.getUid();
+        }
+      }
     }
 
     long uv = meta.getLong("uid_next");
     long un = meta.getLong("uid_validity");
-    log.info("exists:{},recent:{},uv{},un:{}", exists, recent, uv, un);
-    
+    log.info("exists:{},recent:{},uv:{},un:{}", exists, recent, uv, un);
+
     sb.append("* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)").append("\r\n");
     sb.append("* OK [PERMANENTFLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft \\*)] Flags permitted.").append("\r\n");
     sb.append("* ").append(exists).append(" EXISTS").append("\r\n");
     sb.append("* ").append(recent).append(" RECENT").append("\r\n");
-    sb.append("* OK [UIDVALIDITY ").append(un).append("] UIDs valid.").append("\r\n");
-    
-    sb.append("* OK [UIDNEXT ").append(uv).append("] Predicted next UID.").append("\r\n");
+    if (unseen > 0) {
+      //* OK [UNSEEN 5] First unseen.
+      sb.append("* OK [UNSEEN ").append(unseen).append("] First unseen.").append("\r\n");
+    }
+    sb.append("* OK [UIDVALIDITY ").append(un).append("] UIDs valid").append("\r\n");
+
+    sb.append("* OK [UIDNEXT ").append(uv).append("] Predicted next UID").append("\r\n");
     //* OK [HIGHESTMODSEQ 2048]
-    sb.append("* OK [HIGHESTMODSEQ ").append(highest_modseq).append("].").append("\r\n");
+    //sb.append("* OK [HIGHESTMODSEQ ").append(highest_modseq).append("].").append("\r\n");
     sb.append(tag).append(" OK [READ-WRITE] SELECT completed.").append("\r\n");
 
     return sb.toString();
   }
-
 
   public String handleStore(ImapSessionContext session, String tag, String args, boolean isUid) {
     if (session.getState() != ImapSessionContext.State.SELECTED) {
@@ -383,6 +400,56 @@ public class ImapService {
 
     }
     return s;
+  }
+
+  public String handleStatus(ImapSessionContext session, String tag, String args) {
+    // args 示例:  "server_error" (UIDNEXT MESSAGES UNSEEN RECENT)
+    // 先拆出 mailbox 名称 和要查询的项
+    String[] parts = args.split("\\s+", 2);
+    String mbox = unquote(parts[0]);
+    String fields = parts[1].trim();
+    // 拿到 mailboxId
+    Long userId = session.getUserId();
+    Long boxId = mailboxService.queryMailBoxId(userId, mbox);
+    if (boxId == null) {
+      return tag + " NO STATUS failed: mailbox not found\r\n";
+    }
+
+    // 统计各项
+    // UIDNEXT:
+    Row row = mailboxService.status(boxId);
+    long uidNext = row.getLong("uidnext");
+
+    // MESSAGES = 总邮件数
+    long messages = row.getLong("messages");
+    // UNSEEN = 未标 \Seen
+    long unseen = row.getLong("unseen");
+    // RECENT = 未清 \Recent
+    long recent = row.getLong("recent");
+
+    // 构造 untagged STATUS 响应
+    StringBuilder sb = new StringBuilder();
+    sb.append("* STATUS \"").append(mbox).append("\" (");
+    // 按客户端请求的顺序来输出
+    if (fields.contains("UIDNEXT")) {
+      sb.append("UIDNEXT ").append(uidNext).append(" ");
+    }
+    if (fields.contains("MESSAGES")) {
+      sb.append("MESSAGES ").append(messages).append(" ");
+    }
+    if (fields.contains("UNSEEN")) {
+      sb.append("UNSEEN ").append(unseen).append(" ");
+    }
+    if (fields.contains("RECENT")) {
+      sb.append("RECENT ").append(recent).append(" ");
+    }
+    // 去掉最后多余的空格
+    sb.setLength(sb.length() - 1);
+    sb.append(")\r\n");
+
+    // 最后一行 tagged OK
+    sb.append(tag).append(" OK STATUS completed\r\n");
+    return sb.toString();
   }
 
 }
