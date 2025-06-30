@@ -1,9 +1,9 @@
 WITH new_users AS (
   -- 步骤1: 插入新用户
   INSERT INTO mw_user (id, username, password_hash, creator, updater, tenant_id) VALUES
-  (1001, 'user1@tio.com', '600000$4JRI3BfykBwVVHwSXuUYmA==$qefBA/+M2pcr9o6p4ycojdHNnLAhTs9+7cmSjp664ww=', 'system', 'system', 1),
-  (1002, 'user2@tio.com', '600000$4JRI3BfykBwVVHwSXuUYmA==$qefBA/+M2pcr9o6p4ycojdHNnLAhTs9+7cmSjp664ww=', 'system', 'system', 1),
-  (1003, 'error@tio.com', '600000$4JRI3BfykBwVVHwSXuUYmA==$qefBA/+M2pcr9o6p4ycojdHNnLAhTs9+7cmSjp664ww=', 'system', 'system', 1)
+  (1001, 'user1@litong.xyz', '600000$4JRI3BfykBwVVHwSXuUYmA==$qefBA/+M2pcr9o6p4ycojdHNnLAhTs9+7cmSjp664ww=', 'system', 'system', 1),
+  (1002, 'user2@litong.xyz', '600000$4JRI3BfykBwVVHwSXuUYmA==$qefBA/+M2pcr9o6p4ycojdHNnLAhTs9+7cmSjp664ww=', 'system', 'system', 1),
+  (1003, 'error@litong.xyz', '600000$4JRI3BfykBwVVHwSXuUYmA==$qefBA/+M2pcr9o6p4ycojdHNnLAhTs9+7cmSjp664ww=', 'system', 'system', 1)
   RETURNING id, username
 ),
 mailbox_names (name) AS (
