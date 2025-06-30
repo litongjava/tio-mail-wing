@@ -17,13 +17,13 @@ public class ErrorAlarmHandler {
   public HttpResponse send(HttpRequest request) {
     HttpResponse response = TioRequestContext.getResponse();
 
-    String fromUser = request.getHeader("mail_from_user");
-    String toUser = request.getHeader("mail_to_user");
-    String mailBox = request.getHeader("mail_to_mailbox");
+    String fromUser = request.getHeader("mail-from-user");
+    String toUser = request.getHeader("mail-to-user");
+    String mailBox = request.getHeader("mail-to-mailbox");
     if (mailBox == null) {
       mailBox = "server_error";
     }
-    String subject = request.getHeader("mail_subject");
+    String subject = request.getHeader("mail-subject");
     if (subject == null) {
       subject = "server_error";
     }
