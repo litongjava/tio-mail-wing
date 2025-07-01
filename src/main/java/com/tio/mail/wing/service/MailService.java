@@ -322,7 +322,7 @@ public class MailService {
   }
 
   public List<Email> findEmailsByUidSet(long mailboxId, String messageSet) {
-    // 1. Fetch 原始列表（还是用 Db.find + 模板 SQL）
+    // —— 1. 原查库逻辑不变 ——
     WhereClauseResult where = buildUidWhereClause(messageSet, mailboxId);
     if (where.getClause().isEmpty()) {
       return Collections.emptyList();
@@ -331,36 +331,61 @@ public class MailService {
     List<Object> params = new ArrayList<>();
     params.add(mailboxId);
     params.addAll(where.getParams());
-    List<Row> rows = Db.find(sql, params.toArray());
-
-    // 2. 用 for 代替 .stream().map(...)
-    List<Email> emails = new ArrayList<>(rows.size());
-    for (Row r : rows) {
+    List<Email> emails = new ArrayList<>();
+    for (Row r : Db.find(sql, params.toArray())) {
       emails.add(mailFlagService.rowToEmailWithAggregatedFlags(r));
     }
 
-    // 3. 解析客户端顺序
-    String[] parts = messageSet.split(",");
-    List<Long> order = new ArrayList<>(parts.length);
-    for (String p : parts) {
-      order.add(Long.parseLong(p.trim()));
+    // —— 2. 新增：按客户端顺序展开 messageSet ——  
+    // 支持 "5"、"1:4"、"4:1"、"*"、"10:*"、"*:20" 等格式
+    List<Long> requestedOrder = new ArrayList<>();
+    Long maxUid = null;
+    for (String part0 : messageSet.split(",")) {
+      String part = part0.trim();
+      // 2.1 range
+      if (part.contains(":")) {
+        String[] ss = part.split(":", 2);
+        // 懒加载 maxUid
+        if (maxUid == null) {
+          maxUid = getMaxUid(mailboxId);
+        }
+        long start = ss[0].equals("*") ? maxUid : Long.parseLong(ss[0]);
+        long end = ss[1].equals("*") ? maxUid : Long.parseLong(ss[1]);
+        if (start <= end) {
+          for (long u = start; u <= end; u++) {
+            requestedOrder.add(u);
+          }
+        } else {
+          for (long u = start; u >= end; u--) {
+            requestedOrder.add(u);
+          }
+        }
+      }
+      // 2.2 wildcard "*"
+      else if (part.equals("*")) {
+        if (maxUid == null) {
+          maxUid = getMaxUid(mailboxId);
+        }
+        requestedOrder.add(maxUid);
+      }
+      // 2.3 单个 UID
+      else {
+        requestedOrder.add(Long.parseLong(part));
+      }
     }
 
-    // 4. 按客户端顺序重排，用 for 也能做到
-    //    先索引一下：UID → Email
-    Map<Long, Email> map = new HashMap<>(emails.size());
+    // —— 3. 再次重排查询到的结果 ——  
+    Map<Long, Email> byUid = new HashMap<>(emails.size());
     for (Email e : emails) {
-      map.put(e.getUid(), e);
+      byUid.put(e.getUid(), e);
     }
-    //    再按 order 顺序取出
-    List<Email> ordered = new ArrayList<>(order.size());
-    for (Long uid : order) {
-      Email e = map.get(uid);
+    List<Email> ordered = new ArrayList<>(requestedOrder.size());
+    for (Long uid : requestedOrder) {
+      Email e = byUid.get(uid);
       if (e != null) {
         ordered.add(e);
       }
     }
-
     return ordered;
   }
 
