@@ -2,7 +2,9 @@ package com.tio.mail.wing.service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -124,8 +126,6 @@ public class MailService {
     return uids;
   }
 
-
-
   /**
    * [兼容POP3] 获取用户收件箱(INBOX)中所有未删除的邮件。
    * 注意：此方法现在性能更高，但如果邮箱巨大，仍需考虑分页。
@@ -202,7 +202,6 @@ public class MailService {
     String sql = SqlTemplates.get("mailbox.getActiveMessages");
     List<Row> mailRows = Db.find(sql, mailbox.getLong("id"));
 
-    
     return mailRows.stream().map(mailFlagService::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
 
@@ -211,8 +210,6 @@ public class MailService {
     List<Row> mailRows = Db.find(sql, mailboxId);
     return mailRows.stream().map(mailFlagService::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
-
-
 
   /**
    * [IMAP核心] 获取邮箱的元数据。
@@ -325,22 +322,46 @@ public class MailService {
   }
 
   public List<Email> findEmailsByUidSet(long mailboxId, String messageSet) {
-    // 解析 messageSet 并构建 SQL 条件
-    WhereClauseResult whereClause = buildUidWhereClause(messageSet, mailboxId);
-    if (whereClause.getClause().isEmpty()) {
+    // 1. Fetch 原始列表（还是用 Db.find + 模板 SQL）
+    WhereClauseResult where = buildUidWhereClause(messageSet, mailboxId);
+    if (where.getClause().isEmpty()) {
       return Collections.emptyList();
     }
-    // 使用新的带占位符的SQL模板
-    String baseSql = SqlTemplates.get("mailbox.findEmails.baseQuery");
-    // 将动态生成的WHERE条件填入占位符 %s
-    String finalSql = String.format(baseSql, whereClause.getClause());
-
+    String sql = String.format(SqlTemplates.get("mailbox.findEmails.baseQuery"), where.getClause());
     List<Object> params = new ArrayList<>();
-    params.add(mailboxId); // 这是 baseQuery 中的第一个 '?'
-    params.addAll(whereClause.getParams()); // 这是动态条件中的参数
+    params.add(mailboxId);
+    params.addAll(where.getParams());
+    List<Row> rows = Db.find(sql, params.toArray());
 
-    List<Row> mailRows = Db.find(finalSql, params.toArray());
-    return mailRows.stream().map(mailFlagService::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
+    // 2. 用 for 代替 .stream().map(...)
+    List<Email> emails = new ArrayList<>(rows.size());
+    for (Row r : rows) {
+      emails.add(mailFlagService.rowToEmailWithAggregatedFlags(r));
+    }
+
+    // 3. 解析客户端顺序
+    String[] parts = messageSet.split(",");
+    List<Long> order = new ArrayList<>(parts.length);
+    for (String p : parts) {
+      order.add(Long.parseLong(p.trim()));
+    }
+
+    // 4. 按客户端顺序重排，用 for 也能做到
+    //    先索引一下：UID → Email
+    Map<Long, Email> map = new HashMap<>(emails.size());
+    for (Email e : emails) {
+      map.put(e.getUid(), e);
+    }
+    //    再按 order 顺序取出
+    List<Email> ordered = new ArrayList<>(order.size());
+    for (Long uid : order) {
+      Email e = map.get(uid);
+      if (e != null) {
+        ordered.add(e);
+      }
+    }
+
+    return ordered;
   }
 
   /**
@@ -381,7 +402,6 @@ public class MailService {
     List<Row> mailRows = Db.find(finalSql, params.toArray());
     return mailRows.stream().map(mailFlagService::rowToEmailWithAggregatedFlags).collect(Collectors.toList());
   }
-
 
   private WhereClauseResult buildUidWhereClause(String messageSet, long mailboxId) {
     StringBuilder clause = new StringBuilder();
