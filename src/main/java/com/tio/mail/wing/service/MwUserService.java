@@ -15,6 +15,9 @@ public class MwUserService {
   public Long authenticate(String username, String password) {
     String sql = "select id,password_hash from mw_user where username=? and deleted=0";
     Row row = Db.findFirst(sql, username);
+    if (row == null) {
+      return null;
+    }
     String user_password_hash = row.getString("password_hash");
     if (user_password_hash != null) {
       if (Sha256Utils.checkPassword(password, user_password_hash)) {
