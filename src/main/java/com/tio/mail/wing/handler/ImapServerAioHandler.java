@@ -118,6 +118,9 @@ public class ImapServerAioHandler implements ServerAioHandler {
         // args 里是: "<mailbox>" "(UIDNEXT MESSAGES UNSEEN RECENT)"
         reply = imapService.handleStatus(session, tag, args);
         break;
+      case "CHECK":
+        reply = tag + " OK CHECK completed.\r\n";
+        break;
       case "FETCH":
         // 传递 isUidCommand = false
         ImapFetchService imapFetchService = Aop.get(ImapFetchService.class);
