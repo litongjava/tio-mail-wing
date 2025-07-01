@@ -318,9 +318,29 @@ public class ImapService {
       return handleCopy(session, tag, sub, true);
     case "MOVE":
       return handleMove(session, tag, sub, true);
+    case "SEARCH":
+      return handleSearch(session, tag, sub, parts);
     default:
       return tag + " BAD Unsupported UID command: " + cmd + "\r\n";
     }
+  }
+
+  private String handleSearch(ImapSessionContext session, String tag, String criteria, String[] parts) {
+    // parts[1] 可能是 "1:4 NOT DELETED"，我们只取 "1:4"
+    String setSpec = criteria.split("\\s+", 2)[0]; // "1:4"
+
+    // 直接复用 findEmailsByUidSet
+    List<Email> matches = mailService.findEmailsByUidSet(session.getSelectedMailboxId(), setSpec);
+
+    // 构造 SEARCH 响应
+    StringBuilder sb = new StringBuilder();
+    sb.append("* SEARCH");
+    for (Email e : matches) {
+      sb.append(" ").append(e.getUid());
+    }
+    sb.append("\r\n");
+    sb.append(tag).append(" OK UID SEARCH completed.\r\n");
+    return sb.toString();
   }
 
   /**
