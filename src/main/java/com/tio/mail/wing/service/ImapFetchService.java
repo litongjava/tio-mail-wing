@@ -55,7 +55,7 @@ public class ImapFetchService {
       return sb.toString();
     }
 
-    if (items.equalsIgnoreCase("FLAGS")) {
+    if (items.equalsIgnoreCase("FLAGS") || items.equalsIgnoreCase("UID FLAGS")) {
       //UID fetch 1:* (FLAGS)
       sb = fetchFlags(userId, mailBoxId, items, isUid, toFetch);
 
