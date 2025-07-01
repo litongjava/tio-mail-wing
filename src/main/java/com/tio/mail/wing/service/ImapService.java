@@ -190,7 +190,7 @@ public class ImapService {
     return sb.toString();
   }
 
-  public String handleSelect(ImapSessionContext session, String tag, String args) {
+  public String handleSelect(ImapSessionContext session, String tag, String args, boolean readOnly) {
     String mailbox = unquote(args);
     StringBuilder sb = new StringBuilder();
     Long userId = session.getUserId();
@@ -254,7 +254,11 @@ public class ImapService {
     sb.append("* OK [UIDNEXT ").append(uv).append("] Predicted next UID").append("\r\n");
     //* OK [HIGHESTMODSEQ 2048]
     //sb.append("* OK [HIGHESTMODSEQ ").append(highest_modseq).append("].").append("\r\n");
-    sb.append(tag).append(" OK [READ-WRITE] SELECT completed.").append("\r\n");
+    if (readOnly) {
+      sb.append(tag).append(" OK [READ-ONLY] SELECT completed.").append("\r\n");
+    } else {
+      sb.append(tag).append(" OK [READ-WRITE] SELECT completed.").append("\r\n");
+    }
 
     return sb.toString();
   }

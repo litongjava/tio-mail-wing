@@ -102,6 +102,12 @@ public class ImapServerAioHandler implements ServerAioHandler {
       case "LIST":
         reply = imapService.handleList(session, tag, args);
         break;
+      case "SELECT":
+        reply = imapService.handleSelect(session, tag, args, false);
+        break;
+      case "EXAMINE":
+        reply = imapService.handleSelect(session, tag, args, true);
+        break;
       case "LSUB":
         reply = imapService.handleList(session, tag, args);
         break;
@@ -110,9 +116,6 @@ public class ImapServerAioHandler implements ServerAioHandler {
         break;
       case "SUBSCRIBE":
         reply = imapService.handleSubscribe(tag);
-        break;
-      case "SELECT":
-        reply = imapService.handleSelect(session, tag, args);
         break;
       case "STATUS":
         // args 里是: "<mailbox>" "(UIDNEXT MESSAGES UNSEEN RECENT)"
