@@ -40,7 +40,8 @@ public class ImapFetchService {
     Long mailBoxId = session.getSelectedMailboxId();
     String set = m.group(1);
     String items = m.group(2).toUpperCase();
-
+    log.info("userId:{},mailBoxId:{},args:{},set:{},items:{}", userId, mailBoxId, args, set, items);
+    
     List<Email> toFetch = null;
     if (isUid) {
       toFetch = mailboxService.findEmailsByUidSet(user, box, set);

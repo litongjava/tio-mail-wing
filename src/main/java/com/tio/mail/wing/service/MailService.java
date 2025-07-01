@@ -322,7 +322,7 @@ public class MailService {
   }
 
   public List<Email> findEmailsByUidSet(long mailboxId, String messageSet) {
-    // —— 1. 原查库逻辑不变 ——
+    // —— 1. 查库
     WhereClauseResult where = buildUidWhereClause(messageSet, mailboxId);
     if (where.getClause().isEmpty()) {
       return Collections.emptyList();
@@ -336,7 +336,7 @@ public class MailService {
       emails.add(mailFlagService.rowToEmailWithAggregatedFlags(r));
     }
 
-    // —— 2. 新增：按客户端顺序展开 messageSet ——  
+    // —— 2. 按客户端顺序展开 messageSet ——  
     // 支持 "5"、"1:4"、"4:1"、"*"、"10:*"、"*:20" 等格式
     List<Long> requestedOrder = new ArrayList<>();
     Long maxUid = null;
