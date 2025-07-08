@@ -1,7 +1,9 @@
 package com.tio.mail.wing.service;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 
 import com.litongjava.jfinal.aop.Aop;
@@ -10,6 +12,7 @@ import com.tio.mail.wing.handler.SmtpSessionContext;
 public class SmtpService {
   private MwUserService userService = Aop.get(MwUserService.class);
   private MailSaveService mailSaveService = Aop.get(MailSaveService.class);
+  private SmtpSendService smtpSendService = Aop.get(SmtpSendService.class);
 
   public String handleEhlo(String[] parts, SmtpSessionContext session) {
     if (session.getState() != SmtpSessionContext.State.CONNECTED) {
@@ -109,12 +112,27 @@ public class SmtpService {
   public String handleDataReceiving(String line, SmtpSessionContext session) {
     if (".".equals(line)) {
       String mailData = session.getMailContent().toString();
-      for (String recipient : session.getToAddresses()) {
-        mailSaveService.saveEmail(recipient, mailData);
+
+      // 1. 划分本地 vs 外部
+      List<String> externalRecipients = new ArrayList<>();
+      for (String rcpt : session.getToAddresses()) {
+        if (userService.userExists(rcpt)) {
+          mailSaveService.saveEmail(rcpt, mailData);
+        } else {
+          externalRecipients.add(rcpt);
+        }
       }
+
+      // 2. 投递给外部收件人
+      if (!externalRecipients.isEmpty()) {
+        smtpSendService.sendExternalMail(session.getFromAddress(), externalRecipients, mailData);
+      }
+
+      // 3. 响应并重置
       String id = UUID.randomUUID().toString();
       session.resetTransaction();
       return "250 OK: queued as " + id + "\r\n";
+
     } else {
       session.getMailContent().append(line).append("\r\n");
       return null;

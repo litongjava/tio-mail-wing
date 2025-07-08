@@ -31,30 +31,12 @@
     </dependency>
 
     <dependency>
-      <groupId>com.alibaba</groupId>
-      <artifactId>druid</artifactId>
-      <version>0.2.9</version>
+      <groupId>com.sun.mail</groupId>
+      <artifactId>javax.mail</artifactId>
+      <version>1.6.2</version>
     </dependency>
 
-    <dependency>
-      <groupId>mysql</groupId>
-      <artifactId>mysql-connector-java</artifactId>
-      <version>5.1.46</version>
-    </dependency>
-
-    <!-- FST 序列化工具，用于对象和字节流间的转换 -->
-    <dependency>
-      <groupId>de.ruedigermoeller</groupId>
-      <artifactId>fst</artifactId>
-      <version>2.57</version>
-    </dependency>
-
-    <!-- Jedis，Redis 的 Java 客户端 -->
-    <dependency>
-      <groupId>redis.clients</groupId>
-      <artifactId>jedis</artifactId>
-      <version>4.3.1</version>
-    </dependency>
+  
 
     <dependency>
       <groupId>org.postgresql</groupId>
@@ -77,12 +59,7 @@
       <version>4.12</version>
       <scope>test</scope>
     </dependency>
-
-    <dependency>
-      <groupId>com.alibaba</groupId>
-      <artifactId>easyexcel</artifactId>
-      <version>4.0.3</version>
-    </dependency>
+ 
   </dependencies>
 
 
