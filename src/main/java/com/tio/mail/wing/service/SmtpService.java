@@ -9,6 +9,9 @@ import java.util.UUID;
 import com.litongjava.jfinal.aop.Aop;
 import com.tio.mail.wing.handler.SmtpSessionContext;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 public class SmtpService {
   private MwUserService userService = Aop.get(MwUserService.class);
   private MailSaveService mailSaveService = Aop.get(MailSaveService.class);
@@ -92,13 +95,16 @@ public class SmtpService {
     }
     int start = line.indexOf('<'), end = line.lastIndexOf('>');
     String to = (start >= 0 && end > start + 1) ? line.substring(start + 1, end) : "";
-    if (userService.userExists(to)) {
-      session.getToAddresses().add(to);
-      session.setState(SmtpSessionContext.State.RCPT_TO_RECEIVED);
-      return "250 OK\r\n";
-    } else {
-      return "550 No such user here\r\n";
+
+    if (to.isEmpty()) {
+      return "501 Invalid address\r\n";
     }
+
+    // Accept the recipient for further processing regardless of whether it
+    // exists locally. Local/non-local check will be done at DATA stage.
+    session.getToAddresses().add(to);
+    session.setState(SmtpSessionContext.State.RCPT_TO_RECEIVED);
+    return "250 OK\r\n";
   }
 
   public String handleData(SmtpSessionContext session) {
@@ -125,6 +131,7 @@ public class SmtpService {
 
       // 2. 投递给外部收件人
       if (!externalRecipients.isEmpty()) {
+        log.info("externalRecipients:{}", externalRecipients);
         smtpSendService.sendExternalMail(session.getFromAddress(), externalRecipients, mailData);
       }
 
