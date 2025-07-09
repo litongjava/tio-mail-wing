@@ -94,7 +94,9 @@ public class SmtpSendService {
         // 配置 JavaMail Session
         Properties props = new Properties();
         props.put("mail.smtp.host", mxHost);
-        props.put("mail.smtp.port", "25");
+        props.put("mail.smtp.port", "587");
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
         Session jmSession = Session.getInstance(props);
 
         // 用 raw DATA 构造 MimeMessage（需要客户端在 DATA 阶段提交完整的 headers + body）
